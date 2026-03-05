@@ -9,9 +9,14 @@
     "server": "node server/index.js",
     "build": "vite build",
     "preview": "vite preview",
-    "serve": "http-server dist -p 8080"
+    "serve": "http-server dist -p 8080",
+    "cap:sync": "npx cap sync",
+    "cap:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "express": "^4.19.2",
     "ol": "^8.2.0",
     "proj4": "^2.9.2"
@@ -27,5 +32,5 @@
     "geospatial"
   ],
   "author": "Archaion",
-  "license": "MIT"
+  "license": "Proprietary"
 }

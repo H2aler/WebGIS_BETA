@@ -1,0 +1,12 @@
+{
+    "appId": "com.webgis.app",
+    "appName": "WebGIS",
+    "webDir": "dist",
+    "server": {
+        "androidScheme": "https",
+        "allowNavigation": [
+            "*"
+        ],
+        "cleartext": true
+    }
+}

@@ -256,7 +256,7 @@ app.get('/api/street-images', async (req, res) => {
     const ovCount = results.filter((r) => r.source === 'openverse').length;
     console.log(
       `[street-images] lat=${lat.toFixed(6)}, lon=${lon.toFixed(6)} → total=${results.length}, ` +
-        `geo=${geoCount}, text=${textCount}, openverse=${ovCount}`
+      `geo=${geoCount}, text=${textCount}, openverse=${ovCount}`
     );
 
     res.json(results);
@@ -266,7 +266,93 @@ app.get('/api/street-images', async (req, res) => {
   }
 });
 
+app.get('/api/wayback-tile/:releaseId/:z/:x/:y', async (req, res) => {
+  const { releaseId, z, x, y } = req.params;
+  // Esri Wayback WMTS API - 올바른 URL 패턴
+  // URL 형식: /arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/{releaseId}/{level}/{row}/{col}
+  // {level} = z, {row} = y, {col} = x
+  const url = `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${releaseId}/${z}/${y}/${x}`;
+
+  console.log(`[Wayback Proxy] Fetching: ${url}`);
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`[Wayback Proxy] Failed (${response.status}): ${url}`);
+      return res.status(response.status).send('Tile fetch failed');
+    }
+
+    const contentType = response.headers.get('content-type');
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24시간 캐싱
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('[wayback-proxy] 오류:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Google 위성 타일 프록시 (Walking Earth용)
+app.get('/api/google-tile/:server/:layer/:z/:x/:y', async (req, res) => {
+  const { server, layer, z, x, y } = req.params;
+  // Google Maps 타일 URL 패턴
+  // server: 0-3 (로드 밸런싱)
+  // layer: s (위성), y (하이브리드), p (지형도), t (도로)
+  const url = `https://mt${server}.google.com/vt/lyrs=${layer}&x=${x}&y=${y}&z=${z}`;
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Referer': 'https://www.google.com/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`[Google Tile Proxy] Failed (${response.status}): ${url}`);
+      return res.status(response.status).send('Tile fetch failed');
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24시간 캐싱
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('[google-tile-proxy] 오류:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// 3D 지형 타일 프록시 (Terrain elevation tiles)
+app.get('/api/terrain-tile/:z/:x/:y', async (req, res) => {
+  const { z, x, y } = req.params;
+  const url = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+
+  try {
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.error(`[Terrain Tile Proxy] Failed (${response.status}): ${url}`);
+      return res.status(response.status).send('Tile fetch failed');
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // 24시간 캐싱
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('[terrain-tile-proxy] 오류:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`✅ Street Images API 서버가 포트 ${PORT}에서 실행 중입니다.`);
+  console.log(`✅ Street Images & Wayback Proxy 서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
 

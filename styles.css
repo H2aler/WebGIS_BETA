@@ -434,6 +434,148 @@ body,
     margin: 0;
 }
 
+/* 과거 위성 연도 선택기 스타일 */
+/* 과거 위성 연도 선택기 - 프리미엄 글래스모피즘 디자인 */
+.year-selector-container {
+    position: absolute;
+    bottom: -70px;
+    /* 헤더 아래쪽으로 더 여유 있게 배치 */
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(15px) saturate(180%);
+    -webkit-backdrop-filter: blur(15px) saturate(180%);
+    padding: 10px 24px;
+    border-radius: 50px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    z-index: 1000;
+    border: none;
+    animation: premiumSlideDown 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+    max-width: 95vw;
+    overflow-x: auto;
+}
+
+@keyframes premiumSlideDown {
+    from {
+        transform: translate(-50%, -30px);
+        opacity: 0;
+        filter: blur(5px);
+    }
+
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+        filter: blur(0);
+    }
+}
+
+.year-selector-label {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1a202c;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.year-selector-label span {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.year-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(59, 130, 246, 0.3) transparent;
+}
+
+.year-buttons::-webkit-scrollbar {
+    height: 4px;
+}
+
+.year-buttons::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.year-buttons::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.3);
+    border-radius: 2px;
+}
+
+.year-btn {
+    background: rgba(243, 244, 246, 0.8);
+    border: 1px solid rgba(229, 231, 235, 0.5);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #4b5563;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    flex-shrink: 0;
+}
+
+.year-btn:hover {
+    background: white;
+    transform: translateY(-2px);
+    color: #2563eb;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #3b82f6;
+}
+
+.year-btn.active {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5);
+    transform: scale(1.05);
+}
+
+/* 다크 모드 지원 */
+:root[data-theme="dark"] .year-selector-container {
+    background: rgba(17, 24, 39, 0.75);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme="dark"] .year-selector-label {
+    color: #f8fafc;
+}
+
+:root[data-theme="dark"] .year-selector-label span {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+}
+
+:root[data-theme="dark"] .year-btn {
+    background: rgba(31, 41, 55, 0.8);
+    border-color: rgba(75, 85, 99, 0.4);
+    color: #cbd5e1;
+}
+
+:root[data-theme="dark"] .year-btn:hover {
+    background: #374151;
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="dark"] .year-btn.active {
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+}
+
 /* 검색 컨테이너 스타일 */
 .search-container {
     position: relative;
@@ -576,6 +718,65 @@ body,
 
 :root[data-theme="dark"] #logoutBtn {
     background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+/* 화질 향상 버튼 */
+#enhanceQualityBtn {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.3);
+    transition: all 0.3s ease;
+}
+
+#enhanceQualityBtn:hover {
+    background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.5);
+}
+
+#enhanceQualityBtn.active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.6);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.6);
+    }
+
+    50% {
+        box-shadow: 0 4px 20px rgba(16, 185, 129, 0.8);
+    }
+}
+
+:root[data-theme="dark"] #enhanceQualityBtn {
+    background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+}
+
+:root[data-theme="dark"] #enhanceQualityBtn.active {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+/* 화질 향상 필터 효과 */
+.map.enhanced-quality .ol-layer canvas {
+    filter: contrast(1.15) saturate(1.2) brightness(1.05) sharpen(1);
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+/* 더 강력한 화질 향상 (선명도 강화) */
+.map.enhanced-quality .ol-layer {
+    filter: contrast(1.1) saturate(1.15);
+}
+
+.map.enhanced-quality canvas {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
 }
 
 /* 이미지 탐색 버튼 */
@@ -4125,4 +4326,97 @@ select:focus {
     transition: none !important;
     will-change: bottom;
     /* GPU 가속 */
+}
+
+/* ========== CCTV 뷰어 모달 ========== */
+.cctv-viewer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+}
+
+.cctv-viewer-content {
+    background: #1e293b;
+    width: 800px;
+    max-width: 95vw;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cctv-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.2rem 1.5rem;
+    background: #0f172a;
+    border-bottom: 1px solid #334155;
+}
+
+.cctv-viewer-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.cctv-viewer-close {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #94a3b8;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.cctv-viewer-close:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.cctv-iframe-container {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+}
+
+.cctv-iframe-container iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.cctv-viewer-footer {
+    padding: 0.8rem 1.5rem;
+    background: #0f172a;
+    border-top: 1px solid #334155;
+}
+
+.cctv-viewer-footer p {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+@media (max-width: 768px) {
+    .cctv-viewer-content {
+        width: 100%;
+        height: auto;
+        border-radius: 0;
+    }
 }

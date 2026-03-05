@@ -18,6 +18,75 @@ import { unByKey } from 'ol/Observable';
 import Overlay from 'ol/Overlay';
 import GeoJSON from 'ol/format/GeoJSON';
 
+// 서버 프록시 URL 헬퍼 함수
+function getProxyUrl() {
+    // Capacitor 앱 환경인지 확인
+    const isCapacitor = window.Capacitor || window.cordova;
+
+    if (isCapacitor) {
+        // 앱 환경에서는 서버 프록시 사용
+        // 개발 환경: localhost:3000, 프로덕션: 실제 서버 URL
+        const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        return isDev ? 'http://localhost:3000' : window.location.origin;
+    }
+
+    // 웹 환경에서는 서버가 실행 중이면 사용, 아니면 직접 접근
+    return window.location.origin.includes('localhost') ? 'http://localhost:3000' : null;
+}
+
+// Google 타일 URL 생성 (프록시 사용 또는 직접 접근)
+function getGoogleTileUrl(layer, useProxy = true) {
+    const proxyBase = getProxyUrl();
+    if (useProxy && proxyBase) {
+        // 서버 프록시 사용: /api/google-tile/:server/:layer/:z/:x/:y
+        // server는 0-3 중 랜덤 선택 (로드 밸런싱)
+        return (tileCoord) => {
+            const server = Math.floor(Math.random() * 4);
+            const z = tileCoord[0];
+            const x = tileCoord[1];
+            const y = tileCoord[2];
+            return `${proxyBase}/api/google-tile/${server}/${layer}/${z}/${x}/${y}`;
+        };
+    } else {
+        // 직접 접근 (fallback)
+        return `https://mt{0-3}.google.com/vt/lyrs=${layer}&x={x}&y={y}&z={z}`;
+    }
+}
+
+// 과거 위성 타일 URL 생성 (프록시 사용 또는 직접 접근)
+function getWaybackTileUrl(releaseId, useProxy = true) {
+    const proxyBase = getProxyUrl();
+    if (useProxy && proxyBase) {
+        // 서버 프록시 사용
+        return (tileCoord) => {
+            const z = tileCoord[0];
+            const x = tileCoord[1];
+            const y = tileCoord[2];
+            return `${proxyBase}/api/wayback-tile/${releaseId}/${z}/${x}/${y}`;
+        };
+    } else {
+        // 직접 접근 (fallback)
+        return `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${releaseId}/{z}/{y}/{x}`;
+    }
+}
+
+// 3D 지형 타일 URL 생성 (프록시 사용 또는 직접 접근)
+function getTerrainTileUrl(useProxy = true) {
+    const proxyBase = getProxyUrl();
+    if (useProxy && proxyBase) {
+        // 서버 프록시 사용
+        return (tileCoord) => {
+            const z = tileCoord[0];
+            const x = tileCoord[1];
+            const y = tileCoord[2];
+            return `${proxyBase}/api/terrain-tile/${z}/${x}/${y}`;
+        };
+    } else {
+        // 직접 접근 (fallback)
+        return 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+    }
+}
+
 // 지도 초기화
 class WebGISMap {
     constructor() {
@@ -77,6 +146,23 @@ class WebGISMap {
         this.favoriteMarkers = [];
         this.favoriteFeatures = [];
 
+        // C-ITS 및 CCTV 관리
+        this.citsActive = false;
+        this.cctvSource = new VectorSource();
+        this.cctvLayer = new VectorLayer({
+            source: this.cctvSource,
+            zIndex: 100
+        });
+        this.cctvData = [
+            // 사용자 확인: 서울광장은 작동함
+            { id: 'L933086', name: '서울광장', lat: 37.5665, lon: 126.9780, kind: 'KB', ip: '9962' },
+            // UTIC 추출: 광화문 정확한 파라미터 (kind: Seoul, ch: 51, uid: 62)
+            { id: 'L010029', name: '광화문', lat: 37.5759, lon: 126.9768, kind: 'Seoul', ip: 'undefined', ch: '51', uid: '62' },
+            // 추가 검증 필요 지점들은 잠시 제외하거나 기본값 유지
+            { id: 'L380120', name: '강남역', lat: 37.4979, lon: 127.0276, kind: 'KB', ip: '9962' },
+            { id: 'L880021', name: '부산 해운대', lat: 35.1587, lon: 129.1604, kind: 'KB', ip: '9962' }
+        ];
+
         // 이미지 위치 추정 관련 상태
         this.imageLocationEstimation = {
             active: false,
@@ -112,6 +198,8 @@ class WebGISMap {
         this.renderFavorites();
         this.bindFullscreen();
         this.bindMeasureButtons();
+        this.bindQualityEnhancer();
+        this.initCITS(); // C-ITS 초기화
 
         // 초기 패널 가시성 설정
         this.updatePanelVisibility();
@@ -150,6 +238,37 @@ class WebGISMap {
             preload: 2
         });
 
+        // Google Earth 스타일 (순수 위성) - 라벨 없음
+        // 앱 환경에서는 서버 프록시를 통해 로딩
+        const googleTileUrl = getGoogleTileUrl('s', true);
+        const googleSatelliteSource = new XYZ({
+            tileUrlFunction: typeof googleTileUrl === 'function' ? googleTileUrl : undefined,
+            url: typeof googleTileUrl === 'string' ? googleTileUrl : undefined,
+            attributions: '© Google Maps',
+            crossOrigin: 'anonymous',
+            maxZoom: 20
+        });
+        const googleSatelliteLayer = new TileLayer({
+            source: googleSatelliteSource,
+            title: 'Walking Earth',
+            visible: false,
+            preload: 2
+        });
+
+        // Google 거리뷰 (도로망) 레이어 - 파란 선 표시
+        const googleStreetViewLayer = new TileLayer({
+            source: new XYZ({
+                // lyrs=y (하이브리드), svv (거리뷰 라인)
+                url: 'https://mt{0-3}.google.com/vt/lyrs=y,svv&x={x}&y={y}&z={z}',
+                attributions: '© Google Maps',
+                crossOrigin: 'anonymous',
+                maxZoom: 20
+            }),
+            title: 'Google 거리뷰',
+            visible: false,
+            preload: 2
+        });
+
         // 하이브리드 레이어 (Google Hybrid - 위성 + 고정밀 라벨)
         const hybridLayer = new TileLayer({
             source: new XYZ({
@@ -158,7 +277,7 @@ class WebGISMap {
                 crossOrigin: 'anonymous',
                 maxZoom: 20
             }),
-            title: '구글 하리브리드',
+            title: '구글 하이브리드',
             visible: false,
             preload: 2
         });
@@ -175,11 +294,39 @@ class WebGISMap {
             visible: false
         });
 
+        // 과거 위성 레이어 (초기값 2024년)
+        // 앱 환경에서는 서버 프록시를 통해 로딩
+        const waybackTileUrl = getWaybackTileUrl('13192', true);
+        const pastSatelliteSource = new XYZ({
+            tileUrlFunction: typeof waybackTileUrl === 'function' ? waybackTileUrl : undefined,
+            url: typeof waybackTileUrl === 'string' ? waybackTileUrl : undefined,
+            crossOrigin: 'anonymous',
+            maxZoom: 19
+        });
+        const pastSatelliteLayer = new TileLayer({
+            source: pastSatelliteSource,
+            title: '과거 위성',
+            visible: false
+        });
+
         this.layers = {
+            c_its: new TileLayer({
+                source: new XYZ({
+                    url: 'https://{a-c}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                    attributions: '© OpenStreetMap contributors © CARTO',
+                    crossOrigin: 'anonymous',
+                    maxZoom: 20
+                }),
+                title: 'C-ITS 프리미엄',
+                visible: false
+            }),
             osm: osmLayer,
             satellite: satelliteLayer,
+            walking_earth: googleSatelliteLayer,
+            google_street_view: googleStreetViewLayer,
             hybrid: hybridLayer,
-            terrain: terrainLayer
+            terrain: terrainLayer,
+            past_satellite: pastSatelliteLayer
         };
 
         // 초기 지도 모드 확인 (저장된 값이 없으면 OSM 기본)
@@ -192,7 +339,18 @@ class WebGISMap {
         // 지도 생성
         this.map = new Map({
             target: 'map',
-            layers: [osmLayer, satelliteLayer, terrainLayer, this.vectorLayer],
+            layers: [
+                this.layers.c_its,
+                osmLayer,
+                satelliteLayer,
+                googleSatelliteLayer,
+                googleStreetViewLayer,
+                hybridLayer,
+                terrainLayer,
+                pastSatelliteLayer,
+                this.vectorLayer,
+                this.cctvLayer
+            ],
             view: new View({
                 center: fromLonLat([127.7669, 37.5665]), // 서울 중심
                 zoom: 10,
@@ -207,6 +365,79 @@ class WebGISMap {
                     units: 'metric'
                 })
             ])
+        });
+
+        // Google 거리뷰 모드 클릭 이벤트 리스너
+        this.map.on('click', (e) => {
+            const currentLayer = localStorage.getItem('mapLayer');
+            if (currentLayer === 'google_street_view') {
+                const [lon, lat] = toLonLat(e.coordinate);
+                // 클릭한 위치에 마커 효과 (잠시 표시)
+                this.addSearchMarker(lat, lon, false);
+
+                // 내부 패널 활성화
+                this.activateStreetViewMode();
+
+                // 패널 내용 비우고 iframe 삽입
+                const container = document.getElementById('street-view-content');
+                if (container) {
+                    container.innerHTML = '';
+                    container.style.padding = '0'; // 패딩 제거하여 꽉 채우기
+
+                    const iframe = document.createElement('iframe');
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    iframe.style.border = 'none';
+                    iframe.allowFullscreen = true;
+                    // Google Maps Embed (svembed 모드)
+                    iframe.src = `https://maps.google.com/maps?layer=c&cbll=${lat},${lon}&cbp=12,0,0,0,0&output=svembed`;
+
+                    container.appendChild(iframe);
+                }
+
+                // 패널 스타일 조정 (전체 화면 오버레이)
+                const panel = document.getElementById('streetViewPanel');
+                if (panel) {
+                    panel.style.display = 'block';
+                    panel.style.position = 'fixed'; // 화면 기준 고정
+
+                    // 전체 화면 꽉 차게 설정
+                    panel.style.top = '0';
+                    panel.style.left = '0';
+                    panel.style.width = '100vw';
+                    panel.style.height = '100vh';
+
+                    panel.style.bottom = 'auto';
+                    panel.style.right = 'auto';
+
+                    panel.style.borderRadius = '0'; // 둥근 모서리 제거
+                    panel.style.zIndex = '99999'; // 최상위 레벨
+                    panel.style.backgroundColor = 'black'; // 로딩 중 배경 검정색
+
+                    // 기존 헤더 및 정보 숨기기/조정
+                    const header = panel.querySelector('.streetview-header');
+                    if (header) {
+                        // 닫기 버튼이 포함된 헤더를 좌측 상단에 플로팅
+                        header.style.position = 'absolute';
+                        header.style.top = '10px';
+                        header.style.left = '10px';
+                        header.style.zIndex = '10';
+                        header.style.background = 'rgba(0, 0, 0, 0.7)';
+                        header.style.borderRadius = '8px';
+                        header.style.padding = '8px 15px';
+                        header.style.color = 'white';
+
+                        // 제목(h3) 숨기고 닫기 버튼만 강조
+                        const title = header.querySelector('h3');
+                        if (title) title.style.display = 'none';
+                    }
+
+                    const info = document.getElementById('streetViewInfo');
+                    if (info) info.style.display = 'none';
+                }
+
+                this.toast('📷 거리뷰 로딩 중... (내부 뷰어)');
+            }
         });
 
         // 좌표 표시 이벤트
@@ -260,13 +491,20 @@ class WebGISMap {
             }
         });
 
-        // 즐겨찾기 마커 클릭 이벤트 (삭제용)
+        // CCTV 마커 클릭 이벤트
         this.map.on('click', (event) => {
             const feature = this.map.forEachFeatureAtPixel(event.pixel, (feature) => feature);
-            if (feature && feature.get('properties') && feature.get('properties').type === 'favorite') {
-                const markerId = feature.get('properties').id;
-                if (confirm('이 즐겨찾기 마커를 삭제하시겠습니까?')) {
-                    this.removeFavoriteMarker(markerId);
+            if (feature) {
+                const props = feature.get('properties');
+                if (props && props.type === 'cctv') {
+                    this.showCCTVStream(props);
+                    return;
+                }
+                if (props && props.type === 'favorite') {
+                    const markerId = props.id;
+                    if (confirm('이 즐겨찾기 마커를 삭제하시겠습니까?')) {
+                        this.removeFavoriteMarker(markerId);
+                    }
                 }
             }
         });
@@ -1246,15 +1484,15 @@ class WebGISMap {
             });
         }
 
-        // 로그아웃(시스템 잠금) 관련 이벤트
+        // 설정 초기화 버튼 (기존 로그아웃/잠금 기능 대체)
         const logoutBtn = document.getElementById('logoutBtn');
         if (logoutBtn) {
             logoutBtn.addEventListener('click', () => {
-                const confirmed = confirm('시스템을 잠그고 초기화 후 새로 고침하시겠습니까?');
+                const confirmed = confirm('지도 설정과 저장된 데이터를 초기화하시겠습니까?');
                 if (confirmed) {
                     // 지도 레이어 등 저장된 설정 초기화
-                    localStorage.removeItem('mapLayer');
-                    // 페이지 새로 고침 (비밀번호 입력창이 나타나며 모든 상태 초기화됨)
+                    localStorage.clear();
+                    // 페이지 새로 고침
                     window.location.reload();
                 }
             });
@@ -1264,48 +1502,24 @@ class WebGISMap {
 
     // 로그인 처리
     // 로그인 처리
+    // 로그인 처리 (현재 비활성화됨 - 모든 접속 허용)
     async handleLogin() {
-        const passwordInput = document.getElementById('loginPassword');
-        const errorMsg = document.getElementById('loginError');
         const overlay = document.getElementById('loginOverlay');
         const mainContainer = document.getElementById('mainContainer');
 
-        // 비밀번호 해시값 (보안을 위해 평문 대신 SHA-256 해시 사용)
-        // 원문: H2aler_useOwn_webGIS
-        const targetHash = 'f1f024673f749031d23dae55cfc8cb4eb7ab0c70cee3280b330e7da593f29528';
-
-        try {
-            const inputHash = await this.hashPassword(passwordInput.value);
-
-            if (inputHash === targetHash) {
-                // 성공: 오버레이 제거 및 메인 콘텐츠 표시
-                if (overlay) overlay.classList.add('hidden');
-                if (mainContainer) {
-                    mainContainer.style.filter = 'none';
-                    mainContainer.style.pointerEvents = 'auto';
-                    mainContainer.style.opacity = '1';
-                }
-                this.toast('반갑습니다! 시스템에 접속되었습니다. 🌍');
-
-                // 0.8초 후 오버레이를 DOM에서 완전히 숨김
-                setTimeout(() => {
-                    if (overlay) overlay.style.display = 'none';
-                }, 800);
-            } else {
-                // 실패: 에러 메시지 표시 및 입력창 초기화
-                if (errorMsg) {
-                    errorMsg.style.display = 'block';
-                    errorMsg.style.animation = 'none';
-                    void errorMsg.offsetWidth;
-                    errorMsg.style.animation = null;
-                }
-                passwordInput.value = '';
-                passwordInput.focus();
-            }
-        } catch (error) {
-            console.error('Login error:', error);
-            this.toast('로그인 처리 중 오류가 발생했습니다.');
+        // 성공: 오버레이 제거 및 메인 콘텐츠 표시
+        if (overlay) overlay.classList.add('hidden');
+        if (mainContainer) {
+            mainContainer.style.filter = 'none';
+            mainContainer.style.pointerEvents = 'auto';
+            mainContainer.style.opacity = '1';
         }
+        this.toast('반갑습니다! 시스템에 접속되었습니다. 🌍');
+
+        // 0.8초 후 오버레이를 DOM에서 완전히 숨김
+        setTimeout(() => {
+            if (overlay) overlay.style.display = 'none';
+        }, 800);
     }
 
     // SHA-256 해시 생성 함수
@@ -1411,13 +1625,202 @@ class WebGISMap {
             layer.setVisible(false);
         });
 
+        if (layerType === 'walking_earth') {
+            this.deactivateStreetViewMode(); // 기존 거리뷰 패널 닫기
+            this.activate3DView(null, null, true); // true = Walk Mode 활성화
+            this.toast('🏃 Walking 모드 시작! WASD 키로 이동하고 마우스/QE로 회전하세요. (Shift: 달리기)');
+            localStorage.setItem('mapLayer', layerType);
+            return;
+        }
+
+        this.deactivate3DView(); // Walking 모드나 3D 모드 해제
+
         if (this.layers[layerType]) {
             this.layers[layerType].setVisible(true);
             this.deactivateStreetViewMode();
-        }
 
-        // 레이어 선택 상태 저장
-        localStorage.setItem('mapLayer', layerType);
+            // C-ITS 모드 활성화 여부
+            if (layerType === 'c_its') {
+                this.toggleCITSMode(true);
+            } else {
+                this.toggleCITSMode(false);
+            }
+
+            localStorage.setItem('mapLayer', layerType);
+
+            if (layerType === 'google_street_view') {
+                this.toast('📷 지도에서 파란색 도로를 클릭하면 Google 거리뷰가 열립니다.');
+            }
+
+            // 과거 위성 선택 시 연도 선택기 표시
+            const yearSelector = document.getElementById('yearSelectorContainer');
+            if (yearSelector) {
+                yearSelector.style.display = (layerType === 'past_satellite') ? 'flex' : 'none';
+                if (layerType === 'past_satellite') {
+                    this.bindYearSelector();
+                }
+            }
+        }
+    }
+
+    // 과거 위성 연도 선택기 바인딩
+    bindYearSelector() {
+        if (this.yearSelectorBound) return;
+
+        const buttons = document.querySelectorAll('.year-btn');
+        const label = document.getElementById('currentYearLabel');
+        const layer = this.layers['past_satellite'];
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const year = btn.dataset.year;
+                const releaseId = btn.dataset.id;
+
+                // UI 업데이트
+                buttons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (label) label.textContent = year;
+
+                // 레이어 소스 업데이트 (앱 환경에서는 서버 프록시를 통해 로딩)
+                if (layer) {
+                    const waybackTileUrl = getWaybackTileUrl(releaseId, true);
+                    const newSource = new XYZ({
+                        tileUrlFunction: typeof waybackTileUrl === 'function' ? waybackTileUrl : undefined,
+                        url: typeof waybackTileUrl === 'string' ? waybackTileUrl : undefined,
+                        crossOrigin: 'anonymous',
+                        maxZoom: 19
+                    });
+                    layer.setSource(newSource);
+                    this.toast(`${year}년 위성 지도로 변경되었습니다.`);
+                }
+            });
+        });
+
+        this.yearSelectorBound = true;
+    }
+    // C-ITS 및 CCTV 초기화
+    initCITS() {
+        const modal = document.getElementById('cctvViewerModal');
+        const closeBtn = document.getElementById('cctvViewerClose');
+        const iframe = document.getElementById('cctvIframe');
+
+        if (closeBtn && modal) {
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+                if (iframe) iframe.src = '';
+            });
+
+            // 외부 클릭 시 닫기
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                    if (iframe) iframe.src = '';
+                }
+            });
+        }
+    }
+
+    // C-ITS 모드 토글
+    toggleCITSMode(active) {
+        this.citsActive = active;
+        this.cctvSource.clear();
+
+        if (active) {
+            this.toast('🚦 C-ITS 모드 활성화: 전국의 실시간 CCTV를 확인하세요.');
+
+            // CCTV 아이콘 SVG (Data URL)
+            const cctvSvg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="#1e293b" stroke="#ffffff" stroke-width="1.5"/>
+                    <path d="M15 8V16L9 12L15 8Z" fill="#ff4b2b"/>
+                    <path d="M7 10H8V14H7V10Z" fill="#ffffff"/>
+                    <rect x="9" y="11" width="1" height="2" fill="#ffffff"/>
+                </svg>
+            `;
+            const iconUrl = 'data:image/svg+xml;base64,' + btoa(cctvSvg);
+
+            this.cctvData.forEach(cctv => {
+                const feature = new Feature({
+                    geometry: new Point(fromLonLat([cctv.lon, cctv.lat]))
+                });
+
+                feature.set('properties', { ...cctv, type: 'cctv' });
+
+                // 고시인성 프리미엄 스타일
+                feature.setStyle(new Style({
+                    image: new Icon({
+                        src: iconUrl,
+                        scale: 1.0,
+                        anchor: [0.5, 0.5]
+                    }),
+                    text: new Text({
+                        text: cctv.name,
+                        offsetY: 30,
+                        font: 'bold 13px "Pretendard", sans-serif',
+                        fill: new Fill({ color: '#fff' }),
+                        stroke: new Stroke({ color: '#000', width: 4 }),
+                        textAlign: 'center'
+                    })
+                }));
+
+                this.cctvSource.addFeature(feature);
+            });
+            this.cctvLayer.setVisible(true);
+            this.cctvLayer.setZIndex(10000);
+
+            // 처음 켠 경우 서울 중심으로 살짝 이동 (사용자에게 보이기 위해)
+            const view = this.map.getView();
+            view.animate({
+                center: fromLonLat([126.9780, 37.5665]),
+                zoom: 12,
+                duration: 1000
+            });
+        } else {
+            this.cctvLayer.setVisible(false);
+        }
+    }
+
+    // CCTV 스트림 표시
+    showCCTVStream(cctv) {
+        const modal = document.getElementById('cctvViewerModal');
+        const iframe = document.getElementById('cctvIframe');
+        const title = document.getElementById('cctvTitle');
+
+        if (modal && iframe && title) {
+            title.textContent = `📹 실시간 CCTV: ${cctv.name}`;
+
+            // UTIC 리얼타임 스트림 URL 생성
+            const nameEnc = encodeURIComponent(encodeURIComponent(cctv.name));
+
+            // CCTV 데이터에 개별 파라미터가 있으면 사용하고, 없으면 기본값 적용
+            const kind = cctv.kind || 'KB';
+            const ip = cctv.ip || '9962';
+            const ch = cctv.ch || 'undefined';
+            const uid = cctv.uid || 'undefined';
+
+            // 각 CCTV 위치에 맞춘 정교한 범위값 자동 계산
+            const minX = (cctv.lon - 0.05).toFixed(14);
+            const minY = (cctv.lat - 0.03).toFixed(14);
+            const maxX = (cctv.lon + 0.05).toFixed(14);
+            const maxY = (cctv.lat + 0.03).toFixed(14);
+
+            const streamUrl = `https://www.utic.go.kr/jsp/map/cctvStream.jsp?` +
+                `cctvid=${cctv.id}&` +
+                `cctvname=${nameEnc}&` +
+                `kind=${kind}&` +
+                `cctvip=${ip}&` +
+                `cctvch=${ch}&` +
+                `id=${uid}&` +
+                `cctvpasswd=undefined&` +
+                `cctvport=undefined&` +
+                `minX=${minX}&` +
+                `minY=${minY}&` +
+                `maxX=${maxX}&` +
+                `maxY=${maxY}`;
+
+            iframe.src = streamUrl;
+            modal.style.display = 'flex';
+        }
     }
 
     // 레이어 설정 복구
@@ -1462,10 +1865,47 @@ class WebGISMap {
     }
 
     // 3D View 활성화 (MapLibre GL)
-    activate3DView(targetLat = null, targetLon = null) {
+    activate3DView(targetLat = null, targetLon = null, isWalkMode = false) {
         this.is3DActive = true;
+        this.isWalkMode = isWalkMode; // 보행 모드 플래그
+
+        // 키보드 상태 및 마우스 상태 초기화
+        this.keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false };
+        this.isRightMouseDown = false; // 우클릭 상태 추적
+
+        if (!this.boundKeyHandler) {
+            this.boundKeyHandler = (e) => this.handleWalkKeys(e);
+            window.addEventListener('keydown', this.boundKeyHandler);
+            window.addEventListener('keyup', this.boundKeyHandler);
+        }
+
+        // 우클릭 상태 추적을 위한 이벤트 리스너 (지도 컨테이너에 부착)
         const map3dEl = document.getElementById('map3d');
         if (!map3dEl) return;
+
+        if (!this.boundMouseHandler) {
+            this.boundMouseHandler = {
+                down: (e) => { if (e.button === 2) this.isRightMouseDown = true; },
+                up: (e) => { if (e.button === 2) this.isRightMouseDown = false; },
+                move: (e) => {
+                    if (this.isWalkMode && this.isRightMouseDown) {
+                        const sensitivity = 0.2; // 마우스 감도
+                        this.cameraRotation.bearing -= e.movementX * sensitivity;
+
+                        const newPitch = this.cameraRotation.pitch - e.movementY * sensitivity;
+                        // Pitch 제한 (0 ~ 85도, 하늘 보기 허용)
+                        this.cameraRotation.pitch = Math.max(0, Math.min(85, newPitch));
+                    }
+                },
+                contextmenu: (e) => { if (this.isWalkMode) e.preventDefault(); }
+            };
+
+            // map3dEl 대신 window/document에서 move를 잡아야 끊김이 적음
+            map3dEl.addEventListener('mousedown', this.boundMouseHandler.down);
+            window.addEventListener('mouseup', this.boundMouseHandler.up);
+            window.addEventListener('mousemove', this.boundMouseHandler.move);
+            map3dEl.addEventListener('contextmenu', this.boundMouseHandler.contextmenu);
+        }
 
         // OpenLayers 지도를 숨기고 3D 컨테이너를 표시
         const mapEl = document.getElementById('map');
@@ -1483,6 +1923,9 @@ class WebGISMap {
         }
         const zoom = view.getZoom() || 10;
 
+        // 카메라 회전 상태 초기화
+        this.cameraRotation = { bearing: 0, pitch: isWalkMode ? 85 : 50 };
+
         if (!this.map3D && window.maplibregl) {
             // 2.5D 네비게이션을 위한 최적화된 설정
             // 기본 MapLibre 스타일 사용 (안정적이고 무료)
@@ -1490,11 +1933,21 @@ class WebGISMap {
                 container: 'map3d',
                 style: 'https://tiles.openfreemap.org/styles/liberty',
                 center: lonLat,
-                zoom: Math.max(zoom, 13), // 최소 줌 레벨 13으로 설정
-                pitch: 50, // 2.5D 네비게이션에 적합한 각도
-                bearing: 0,
+                zoom: isWalkMode ? 18 : Math.max(zoom, 13), // 보행 모드는 더 가깝게 (18)
+                pitch: this.cameraRotation.pitch,
+                maxPitch: 85, // 고개를 들 수 있도록 최대 각도 확장
+                bearing: this.cameraRotation.bearing,
                 antialias: true
             });
+
+            // 보행 모드일 경우 기본 마우스 회전 비활성화 (커스텀 컨트롤 사용)
+            if (isWalkMode) {
+                this.map3D.dragRotate.disable();
+                this.map3D.touchZoomRotate.disableRotation();
+            }
+
+            // 보행 루프 시작
+            if (isWalkMode) this.startWalkLoop();
 
             // 지형 높이 데이터 및 2.5D 효과 추가
             this.map3D.on('load', () => {
@@ -1505,8 +1958,79 @@ class WebGISMap {
                         'sky-atmosphere-sun': [0.0, 0.0],
                         'sky-atmosphere-sun-intensity': 15
                     });
+                    // Google 위성 타일 추가 (Walking Earth 모드용) 및 벡터 제거
+                    if (this.isWalkMode) {
+                        // 기존 벡터 스타일의 모든 레이어 숨기기 (도로, 건물, 배경 등)
+                        const styleLayers = this.map3D.getStyle().layers;
+                        styleLayers.forEach(layer => {
+                            this.map3D.setLayoutProperty(layer.id, 'visibility', 'none');
+                        });
 
-                    // 4. 안개 효과 추가 (지평선 경계를 부드럽게 처리)
+                        // 1. 위성 타일 소스 추가 (앱 환경에서는 서버 프록시를 통해 로딩)
+                        if (!this.map3D.getSource('google-satellite')) {
+                            const proxyBase = getProxyUrl();
+                            const googleTiles = proxyBase
+                                ? [(tile) => {
+                                    const server = Math.floor(Math.random() * 4);
+                                    return `${proxyBase}/api/google-tile/${server}/s/${tile.z}/${tile.x}/${tile.y}`;
+                                }]
+                                : ['https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'];
+
+                            this.map3D.addSource('google-satellite', {
+                                'type': 'raster',
+                                'tiles': googleTiles,
+                                'tileSize': 256
+                            });
+                        }
+
+                        // 2. 3D 지형(Terrain) 소스 추가 - 현실감의 핵심!
+                        // MapLibre 데모 타일 사용 (전세계 3D 지형 데이터)
+                        // 앱 환경에서는 서버 프록시를 통해 로딩
+                        if (!this.map3D.getSource('terrain-source')) {
+                            const terrainTileUrl = getTerrainTileUrl(true);
+                            const terrainTiles = typeof terrainTileUrl === 'function'
+                                ? [(tile) => {
+                                    const z = tile.z;
+                                    const x = tile.x;
+                                    const y = tile.y;
+                                    return terrainTileUrl([z, x, y]);
+                                }]
+                                : [terrainTileUrl];
+
+                            this.map3D.addSource('terrain-source', {
+                                'type': 'raster-dem',
+                                'tiles': terrainTiles,
+                                'encoding': 'terrarium',
+                                'tileSize': 256,
+                                'maxzoom': 15
+                            });
+
+                            // 지형 적용 (과장 1.5배로 입체감 강화)
+                            this.map3D.setTerrain({ 'source': 'terrain-source', 'exaggeration': 1.5 });
+                        }
+
+                        // 3. 위성 레이어 추가
+                        if (!this.map3D.getLayer('google-satellite-layer')) {
+                            this.map3D.addLayer({
+                                'id': 'google-satellite-layer',
+                                'type': 'raster',
+                                'source': 'google-satellite',
+                                'paint': { 'raster-opacity': 1 }
+                            });
+                        }
+
+                        // 4. 하늘(Sky) 효과 강화 - 1인칭 시점에 맞게
+                        this.map3D.setSky({
+                            'sky-type': 'atmosphere', // 그라데이션에서 대기 효과로 변경
+                            'sky-atmosphere-sun': [0.0, 90.0],
+                            'sky-atmosphere-sun-intensity': 15
+                        });
+
+                        // Walking Earth 모드 완료
+                        return;
+                    }
+
+                    // 4. 안개 효과 추가 (일반 3D 모드용)
                     this.map3D.setFog({
                         'range': [1, 10],
                         'color': '#ffffff',
@@ -1806,18 +2330,147 @@ class WebGISMap {
     // 3D View 비활성화
     deactivate3DView() {
         this.is3DActive = false;
+        this.isWalkMode = false;
         const map3dEl = document.getElementById('map3d');
         if (map3dEl) {
             map3dEl.style.display = 'none';
         }
         const mapEl = document.getElementById('map');
         if (mapEl) {
-            mapEl.style.visibility = '';
+            mapEl.style.visibility = 'visible';
+            // 3D 맵의 좌표를 2D 맵에 동기화
+            if (this.map3D) {
+                const center = this.map3D.getCenter();
+                const zoom = this.map3D.getZoom();
+                this.map.getView().setCenter(fromLonLat([center.lng, center.lat]));
+                this.map.getView().setZoom(zoom);
+            }
         }
-        if (this.map3DMarker) {
-            this.map3DMarker.remove();
-            this.map3DMarker = null;
+
+        // 키 이벤트 해제 및 보행 루프 중지
+        if (this.boundKeyHandler) {
+            window.removeEventListener('keydown', this.boundKeyHandler);
+            window.removeEventListener('keyup', this.boundKeyHandler);
+            this.boundKeyHandler = null;
         }
+        // 마우스 이벤트 해제
+        if (this.boundMouseHandler) {
+            const map3dEl = document.getElementById('map3d');
+            if (map3dEl) {
+                map3dEl.removeEventListener('mousedown', this.boundMouseHandler.down);
+                map3dEl.removeEventListener('contextmenu', this.boundMouseHandler.contextmenu);
+            }
+            window.removeEventListener('mouseup', this.boundMouseHandler.up);
+            window.removeEventListener('mousemove', this.boundMouseHandler.move);
+            this.boundMouseHandler = null;
+        }
+
+        // 기본 컨트롤 복구
+        if (this.map3D) {
+            this.map3D.dragRotate.enable();
+            this.map3D.touchZoomRotate.enable();
+        }
+
+        if (this.walkFrameId) {
+            cancelAnimationFrame(this.walkFrameId);
+            this.walkFrameId = null;
+        }
+    }
+
+    // 키보드 입력 처리
+    handleWalkKeys(e) {
+        if (!this.isWalkMode) return;
+        const key = e.key.toLowerCase();
+        const isDown = e.type === 'keydown';
+
+        if (key === 'w' || key === 'arrowup') this.keys.w = isDown;
+        if (key === 's' || key === 'arrowdown') this.keys.s = isDown;
+        if (key === 'a' || key === 'arrowleft') this.keys.a = isDown;
+        if (key === 'd' || key === 'arrowright') this.keys.d = isDown;
+        if (key === 'q') this.keys.q = isDown;
+        if (key === 'e') this.keys.e = isDown;
+        if (key === 'shift') this.keys.shift = isDown;
+    }
+
+    // 보행 애니메이션 루프
+    startWalkLoop() {
+        if (this.walkFrameId) cancelAnimationFrame(this.walkFrameId);
+
+        const update = () => {
+            if (!this.is3DActive || !this.isWalkMode || !this.map3D) return;
+
+            // 이동 속도 설정 (Zoom 레벨에 따라 조정)
+            const zoom = this.map3D.getZoom();
+            // 줌이 클수록(가까울수록) 느리게, 멀수록 빠르게
+            const baseSpeed = 0.00001 * Math.pow(2, 20 - zoom);
+            const speed = this.keys.shift ? baseSpeed * 3 : baseSpeed;
+            const rotateSpeed = 1.5;
+
+            // 현재 상태 가져오기
+            const center = this.map3D.getCenter();
+
+            // bearing과 pitch는 커스텀 컨트롤러(this.cameraRotation) 값 사용
+            // 마우스 우클릭 드래그로 갱신된 값이 여기에 실시간으로 반영됨
+            const bearing = this.cameraRotation.bearing;
+            const pitch = this.cameraRotation.pitch;
+
+            let lng = center.lng;
+            let lat = center.lat;
+            let changed = false;
+
+            // 라디안 변환
+            const rad = (bearing * Math.PI) / 180;
+
+            // W/S: 전진/후진 (현재 바라보는 방향 기준)
+            if (this.keys.w) {
+                lng += Math.sin(rad) * speed;
+                lat += Math.cos(rad) * speed;
+                changed = true;
+            }
+            if (this.keys.s) {
+                lng -= Math.sin(rad) * speed;
+                lat -= Math.cos(rad) * speed;
+                changed = true;
+            }
+
+            // A/D: 좌우 이동 (게걸음)
+            if (this.keys.a) {
+                lng -= Math.cos(rad) * speed;
+                lat += Math.sin(rad) * speed;
+                changed = true;
+            }
+            if (this.keys.d) {
+                lng += Math.cos(rad) * speed;
+                lat -= Math.sin(rad) * speed;
+                changed = true;
+            }
+
+            // Q/E: 회전 (우클릭 드래그 중에는 키보드 회전도 합산 가능)
+            if (this.keys.q) {
+                this.cameraRotation.bearing -= rotateSpeed;
+                changed = true;
+            }
+            if (this.keys.e) {
+                this.cameraRotation.bearing += rotateSpeed;
+                changed = true;
+            }
+
+            // 마우스로 시점이 변경되었으면 위치 이동이 없어도 카메라 업데이트 필요
+            if (this.isRightMouseDown) changed = true;
+
+            if (changed) {
+                // 커스텀 컨트롤러 방식에서는 매 프레임 jumpTo를 호출해도 충돌하지 않음
+                this.map3D.jumpTo({
+                    center: [lng, lat],
+                    bearing: this.cameraRotation.bearing,
+                    pitch: this.cameraRotation.pitch
+                });
+            }
+
+            this.walkFrameId = requestAnimationFrame(update);
+        };
+
+        this.walkFrameId = requestAnimationFrame(update);
     }
 
     // Street View 표시 (지도 위에 직접 표시)
@@ -5067,22 +5720,71 @@ class WebGISMap {
         }
     }
 
-    // Backend API를 통해 거리/위치 이미지 검색 (CORS 문제 없이 서버에서 처리)
+    // Backend API를 대신하여 클라이언트에서 직접 Wikimedia GeoSearch 수행 (CORS 지원)
     async searchWikimediaImages(lat, lon, radius = 5000) {
         try {
-            const params = new URLSearchParams({
-                lat: String(lat),
-                lon: String(lon)
-            });
-            const response = await fetch(`http://localhost:3000/api/street-images?${params.toString()}`);
-            if (!response.ok) {
-                console.error('Street Images API 오류:', response.status);
-                return [];
+            console.log(`🌍 Wikimedia GeoSearch: ${lat}, ${lon} (r=${radius})`);
+
+            // 1. 지오서치 (주변 파일 검색)
+            const searchUrl = 'https://commons.wikimedia.org/w/api.php?' +
+                'action=query&' +
+                `list=geosearch&` +
+                `gscoord=${lat}|${lon}&` +
+                `gsradius=${radius}&` +
+                `gslimit=20&` +
+                'format=json&' +
+                'origin=*';
+
+            const searchResp = await fetch(searchUrl);
+            if (!searchResp.ok) return [];
+
+            const searchData = await searchResp.json();
+            const geo = searchData?.query?.geosearch || [];
+
+            if (geo.length === 0) return [];
+
+            // 2. 이미지 정보 가져오기 (URL 등)
+            const pageIds = geo.map(g => g.pageid).join('|');
+            const infoUrl = 'https://commons.wikimedia.org/w/api.php?' +
+                'action=query&' +
+                `pageids=${pageIds}&` +
+                'prop=imageinfo&' +
+                'iiprop=url|thumburl&' +
+                'iiurlwidth=640&' +
+                'format=json&' +
+                'origin=*';
+
+            const infoResp = await fetch(infoUrl);
+            if (!infoResp.ok) return [];
+
+            const infoData = await infoResp.json();
+            const pages = infoData?.query?.pages || {};
+
+            const results = [];
+            for (const pageId in pages) {
+                const page = pages[pageId];
+                const geoItem = geo.find(g => g.pageid === Number(pageId));
+
+                if (!geoItem || !page.imageinfo || !page.imageinfo.length) continue;
+
+                const info = page.imageinfo[0];
+                results.push({
+                    url: info.thumburl || info.url,
+                    fullUrl: info.url,
+                    title: (page.title || '').replace(/^File:/, ''),
+                    description: '',
+                    lat: geoItem.lat,
+                    lon: geoItem.lon,
+                    distance: geoItem.dist || 0,
+                    source: 'wikimedia-geo'
+                });
             }
-            const data = await response.json();
-            return Array.isArray(data) ? data : [];
+
+            // 거리순 정렬
+            return results.sort((a, b) => a.distance - b.distance);
+
         } catch (error) {
-            console.error('Street Images API 호출 오류:', error);
+            console.error('Wikimedia GeoSearch 오류:', error);
             return [];
         }
     }
@@ -6461,6 +7163,25 @@ class WebGISMap {
             return `${(meters / 1000).toFixed(1)}km`;
         }
         return `${Math.round(meters)}m`;
+    }
+
+    // 위성 화질 향상 버튼 바인딩
+    bindQualityEnhancer() {
+        const btn = document.getElementById('enhanceQualityBtn');
+        const mapEl = document.getElementById('map');
+
+        if (btn && mapEl) {
+            btn.addEventListener('click', () => {
+                const isActive = btn.classList.toggle('active');
+                mapEl.classList.toggle('enhanced-quality');
+
+                if (isActive) {
+                    this.toast('✨ 위성 화질이 향상되었습니다. (선명도/대비 강화)');
+                } else {
+                    this.toast('위성 화질이 기본 상태로 복구되었습니다.');
+                }
+            });
+        }
     }
 }
 

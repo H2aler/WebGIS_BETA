@@ -1,82 +1,125 @@
-# 🌍 WebGIS - 지능형 2D/3D 지도 서비스
+# 🌍 WebGIS - 지능형 공간정보 및 C-ITS 통합 서비스 플랫폼
 
-![WebGIS Preview](https://img.shields.io/badge/WebGIS-Modern_Design-blue?style=for-the-badge)
-![Tech Stack](https://img.shields.io/badge/OpenLayers-MapLibre_GL-brightgreen?style=for-the-badge)
+![WebGIS Main Banner](https://img.shields.io/badge/WebGIS-Advanced_System-blue?style=for-the-badge&logo=openlayers)
+![Tech Stack](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript)
+![Framework](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite)
+![Mobile](https://img.shields.io/badge/Capacitor-Android-119EFF?style=for-the-badge&logo=capacitor)
 
-사용자 친화적인 인터페이스와 강력한 분석 기능을 갖춘 오픈소스 기반의 웹 지도 서비스입니다. 2D 지도의 정밀한 측정 기능부터 3D 지도의 실감 나는 탐색까지, 다양한 지리정보 시스템(GIS) 기능을 웹 브라우저에서 즉시 경험할 수 있습니다.
+**WebGIS**는 OpenLayers와 MapLibre GL 기술을 결합하여 2D 지도의 정밀함과 3D 지도의 시각적 경험을 동시에 제공하는 고성능 웹 지도 플랫폼입니다. 단순한 지도 보기를 넘어 실시간 교통 정보(C-ITS), 지능형 측정 도구, AI 기반 위치 분석 등 전문적인 GIS 기능을 누구나 쉽게 사용할 수 있도록 설계되었습니다.
 
 ---
 
-## ✨ 핵심 기능
+## 🚀 주요 혁신 기능
 
-### 1. 🗺️ 하이브리드 지도 모드 (2D & 3D)
-*   **2D 모드**: OpenLayers 기반의 빠르고 정확한 벡터/위성/지형도 레이어 제공.
-*   **3D 모드**: MapLibre GL 기술을 활용한 입체 건물 투영 및 지형 렌더링.
-*   **심리스 전환**: 헤더의 레이어 선택기를 통해 2D와 3D 모드를 즉시 전환 가능.
+### 1. 🚥 차세대 지능형 교통 시스템 (C-ITS)
+- **전국 실시간 CCTV**: 전국 주요 도로의 CCTV 위치를 지도상에 시각화하고, 클릭 시 실시간 스트리밍 영상을 즉시 확인할 수 있습니다. (UTIC/ITS 연동)
+- **C-ITS 프리미엄 레이어**: 교통 흐름과 안전 정보를 한눈에 파악할 수 있는 전용 지도 스타일을 제공합니다.
 
-### 2. 📏 스마트 측정 도구
-*   **거리 및 면적 측정**: 고도화된 지오데식(Geodesic) 계산법을 적용하여 지구의 곡률을 반영한 정확한 수치 계산.
-*   **실시간 배지**: 측정 중 각 선분의 길이와 방위각을 툴팁과 배지로 즉시 표시.
-*   **측정 이력 관리**: 과거 측정 데이터가 자동으로 저장되며, 언제든 다시 확인하거나 삭제 가능.
+### 2. 🏙️ 2D/3D 하이브리드 엔진
+- **심리스 모드 전환**: OpenLayers(2D)와 MapLibre GL(3D) 간의 자유로운 전환이 가능합니다.
+- **3D 지형 및 건물**: 3D 모드에서 실제 지형의 높낮이와 건물의 입체감을 실감 나게 구현합니다.
+- **다양한 레이어**: OSM, 위성, 하이브리드, 지형도, Google Street View 선 표시 등 10종 이상의 레이어를 지원합니다.
 
-### 3. 🚗 지능형 경로 탐색 (Navigation)
-*   **다중 모드**: 자동차, 도보, 자전거 경로 탐색 지원.
-*   **실시간 위치 추적**: GPS 연동을 통해 지도상에 내 위치를 실시간으로 표시하고 경로를 재계산.
-*   **POI 연동**: 지도상의 특정 장소(가게, 역 등)를 클릭하여 즉시 목적지로 설정 가능.
+### 3. 📏 전문가용 스마트 측정 도구
+- **지오데식(Geodesic) 계산**: 단순 평면 거리가 아닌 지구의 곡률을 반영한 정밀 거리/면적 계산을 수행합니다.
+- **구간별 측정 배지**: 측정 중 각 구간의 거리와 방위각을 실시간으로 표시하여 분석 효율을 높입니다.
+- **스마트 멀티 라우팅**: 검색 결과 간의 경로를 자동으로 연결하고 총 거리를 계산하는 지능형 경로 측정 기능을 제공합니다.
 
-### 4. 🖼️ AI 이미지 위치 분석 (GeoSpy Style)
-*   **이미지 기반 검색**: 사진을 업로드하면 GPS 메타데이터 또는 AI 시각 분석(랜드마크, OCR)을 통해 사진이 찍힌 위치를 추정하여 지도에 표시.
-*   **위치 기반 이미지 탐색**: 지도를 클릭하면 해당 위치 주변의 실제 사진과 관련 뉴스/소식을 갤러리 형태로 제공.
+### 4. 🤖 AI 기반 위치 지능 (GeoSpy Style)
+- **이미지 위치 추정**: 사진 업로드 시 GPS 메타데이터(Exif) 추출뿐만 아니라, AI 시각 분석(Landmark 인식, OCR 텍스트 추출)을 통해 사진이 촬영된 장소를 정밀하게 추정합니다.
+- **위치 기반 콘텐츠**: 지도를 클릭하면 해당 위치 주변의 실제 사진과 관련 뉴스를 실시간으로 큐레이션하여 보여줍니다.
 
-### 5. 🏢 상세 POI(장소) 정보
-*   **심층 데이터 매칭**: 단순한 이름 표시를 넘어 전화번호, 영업시간, 상세 주소, 메뉴/종류, 공식 홈페이지 및 SNS(인스타그램, 페이스북) 링크 제공.
-*   **스마트 필터링**: 무의미한 태그 대신 실제 건물 이름과 브랜드 명칭을 정확히 식별하여 표시.
+### 5. ⏳ 시계열 위성 분석 (Wayback)
+- **과거 위성 지도**: Esri Wayback 데이터를 활용하여 2014년부터 현재까지의 연도별 위성 변화를 타임라인으로 탐색할 수 있습니다. 도시 개발이나 지형 변화 분석에 최적화되어 있습니다.
 
-### 6. 🌓 프리미엄 디자인 및 테마
-*   **반응형 UI**: 데스크탑부터 모바일 기기까지 최적화된 화면 구성.
-*   **스마트 사이드바**: 아코디언 메뉴 시스템을 적용하여, 사용하는 도구에 따라 관련 패널이 자동으로 나타나고 숨겨짐.
-*   **다크 모드**: 시력 보호와 디자인 미학을 위한 완벽한 다크 테마 지원.
+### 6. 📱 크로스 플랫폼 지원
+- **반응형 웹 UI**: 데스크탑부터 스마트폰까지 최적화된 레이아웃을 제공합니다.
+- **Android 전용 앱**: Capacitor를 통해 Android 앱으로 빌드되어 태블릿과 모바일 기기에서 네이티브 경험을 제공합니다.
 
 ---
 
 ## 🛠️ 기술 스택
-*   **Frontend**: HTML5, CSS3 (Vanilla CSS), JavaScript (Vanilla JS)
-*   **Map Engine**: [OpenLayers](https://openlayers.org/) (2D), [MapLibre GL JS](https://maplibre.org/) (3D)
-*   **Server**: [Node.js](https://nodejs.org/) (Data Proxy & Server-side tasks)
-*   **API 연동**:
-    *   **Search/Geocoding**: Nominatim (OpenStreetMap)
-    *   **Routing**: OSRM (Open Source Routing Machine)
-    *   **Street View**: 오픈소스 Mapillary 연동 서비스 제공.
-    *   **Images**: Flickr API & Wikipedia
 
----
+### Frontend
+- **Core**: HTML5, CSS3, JavaScript (ES6+, Vanilla JS)
+- **Map Engines**: [OpenLayers](https://openlayers.org/), [MapLibre GL JS](https://maplibre.org/)
+- **Build Tool**: [Vite](https://vitejs.dev/)
+- **AI Libraries**: TensorFlow.js (Object Detection), Tesseract.js (OCR), Exif.js
 
-## 🚀 시작하기
+### Backend (Proxy Server)
+- **Runtime**: Node.js, Express
+- **Function**: CORS 이슈 해결을 위한 위성 타일 및 API 프록시 처리
+- **APIs**: Nominatim (Search), OSRM (Routing), Wikipedia/Wikimedia (Images)
 
-### 설치 및 실행
-1.  저장소를 클론합니다.
-    ```bash
-    git clone https://github.com/USER/WebGIS.git
-    ```
-2.  의존성 패키지를 설치합니다.
-    ```bash
-    npm install
-    ```
-3.  개발 서버를 실행합니다.
-    ```bash
-    npm run dev    # 프론트엔드 (Vite)
-    npm run server # 백엔드 프록시 서버
-    ```
+### Mobile
+- **Cross-platform**: [Capacitor JS](https://capacitorjs.com/)
+- **Target OS**: Android
 
 ---
 
 ## 📂 프로젝트 구조
-*   `index.html`: 서비스의 메인 구조 및 레이아웃.
-*   `main.js`: 지도 로직, 이벤트 핸들링, API 연동 등 핵심 기능 구현.
-*   `styles.css`: 프리미엄 디자인 시스템 및 테마 스타일 정의.
-*   `server/`: API 프록시 및 대용량 데이터 처리를 위한 서버 로직.
+
+```text
+Upgrade_WebGIS/
+├── android/             # Android 네이티브 소스 (Capacitor)
+├── server/              # Node.js 백엔드 프록시 서버
+├── index.html           # 메인 UI 구조
+├── main.js              # 지도 엔진 및 핵심 비즈니스 로직
+├── styles.css           # 프리미엄 디자인 시스템
+├── vite.config.js       # Vite 빌드 설정
+└── package.json         # 의존성 및 스크립트 관리
+```
 
 ---
 
-## 📝 라이선스
-이 프로젝트는 오픈소스 프로젝트로 제공되지만, 모든 권한은 **H2aler**에게 있습니다. 상세한 정보는 LICENSE 파일을 확인하세요.
+## ⚙️ 실행 방법
+
+### 1. 환경 준비
+최신 버전의 [Node.js](https://nodejs.org/)가 설치되어 있어야 합니다.
+
+### 2. 설치 및 로컬 실행
+```bash
+# 저장소 클론
+git clone https://github.com/H2aler/WebGIS_BETA.git
+cd WebGIS_BETA
+
+# 의존성 설치
+npm install
+
+# 개발 서버 및 백엔드 실행
+npm run dev      # 프론트엔드 (http://localhost:5173)
+npm run server   # 백엔드 프록시 (http://localhost:3000)
+```
+
+### 3. 모바일 빌드 (선택 사항)
+```bash
+# 웹 빌드
+npm run build
+
+# Android 프로젝트 동기화
+npx cap sync
+
+# Android Studio에서 열기
+npx cap open android
+```
+
+---
+
+## ⚖️ Copyright & License
+
+> [!IMPORTANT]
+> **본 프로젝트의 모든 권한은 개발자(H2aler)에게 독점적으로 귀속됩니다.**
+
+- **소유권**: 본 소프트웨어와 관련된 모든 코드, 디자인, 지능형 로직 및 데이터 처리 방식에 대한 지식재산권은 **H2aler**의 소유입니다.
+- **제한 사항**: 저작권자의 명시적인 서면 허가 없이는 본 프로젝트의 전체 또는 일부를 상업적 목적으로 무단 전재, 복제, 배포하거나 2차 저작물을 작성할 수 없습니다.
+- **오픈소스 활용**: 본 프로젝트는 교육 및 포트폴리오 열람용으로 공개되어 있으나, 이를 기반으로 한 서비스 배포나 상업적 이용은 법적 제재를 받을 수 있습니다.
+
+상세한 내용은 [LICENSE](file:///c:/Users/USER/Documents/0Upgrade_WebGIS/LICENSE) 파일을 참조하시기 바랍니다.
+
+---
+**Author**: [H2aler](https://github.com/H2aler)  
+**Email**: max30105@gmail.com
+
+
+---
+> 본 프로젝트는 **WebGIS**의 새로운 표준을 제시하며, 지속적인 업데이트를 통해 더욱 정교한 공간정보 기술을 구현해 나갑니다.

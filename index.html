@@ -15,8 +15,8 @@
 </head>
 
 <body>
-    <!-- 로그인 오버레이 -->
-    <div id="loginOverlay" class="login-overlay">
+    <!-- 로그인 오버레이 (비활성화됨) -->
+    <div id="loginOverlay" class="login-overlay" style="display: none;">
         <div class="login-card">
             <div class="login-header">
                 <span class="login-logo">🌍</span>
@@ -36,8 +36,7 @@
         </div>
     </div>
 
-    <div class="container" id="mainContainer"
-        style="filter: blur(10px); pointer-events: none; opacity: 0; transition: all 1s ease;">
+    <div class="container" id="mainContainer">
         <!-- 헤더 -->
         <header class="header">
             <div class="header-content">
@@ -62,16 +61,39 @@
                     <button id="imageSearchBtn" class="header-icon-btn" title="위치 이미지 탐색">🖼️</button>
                     <label for="imageUpload" class="header-icon-btn" title="사진에서 위치 찾기">📷</label>
                     <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                    <button id="enhanceQualityBtn" class="header-icon-btn" title="위성 화질 향상">✨</button>
                     <button id="themeToggle" class="header-icon-btn" title="테마 전환">🌓</button>
-                    <button id="logoutBtn" class="header-icon-btn" title="시스템 잠금/로그아웃">🔒</button>
+                    <button id="logoutBtn" class="header-icon-btn" title="지도 설정 초기화">🔄</button>
                     <select id="layerSelect" class="layer-select-compact" aria-label="지도 레이어 선택">
+                        <option value="c_its">🚦 C-ITS 프리미엄 (전국 CCTV)</option>
                         <option value="osm">표준 지도 (OSM)</option>
                         <option value="satellite">HD 위성 (Esri)</option>
+                        <option value="walking_earth">Walking Earth</option>
+                        <option value="google_street_view">Google 거리뷰 (도로망)</option>
                         <option value="hybrid">구글 하이브리드</option>
                         <option value="terrain">구글 지형도</option>
+                        <option value="past_satellite">과거 위성 지도</option>
                         <option value="streetview">거리뷰</option>
                         <option value="3d">3D지도</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- 과거 위성 연도 선택기 (레이어 선택에 따라 동적 표시) -->
+            <div id="yearSelectorContainer" class="year-selector-container" style="display: none;">
+                <div class="year-selector-label">📅 연도 선택: <span id="currentYearLabel">2024</span></div>
+                <div class="year-buttons">
+                    <button class="year-btn active" data-year="2024" data-id="13192">2024</button>
+                    <button class="year-btn" data-year="2023" data-id="12457">2023</button>
+                    <button class="year-btn" data-year="2022" data-id="17825">2022</button>
+                    <button class="year-btn" data-year="2021" data-id="51423">2021</button>
+                    <button class="year-btn" data-year="2020" data-id="23001">2020</button>
+                    <button class="year-btn" data-year="2019" data-id="11060">2019</button>
+                    <button class="year-btn" data-year="2018" data-id="14426">2018</button>
+                    <button class="year-btn" data-year="2017" data-id="14035">2017</button>
+                    <button class="year-btn" data-year="2016" data-id="6678">2016</button>
+                    <button class="year-btn" data-year="2015" data-id="8781">2015</button>
+                    <button class="year-btn" data-year="2014" data-id="14720">2014</button>
                 </div>
             </div>
         </header>
@@ -440,6 +462,7 @@
                         <p class="streetview-note">💡 Mapillary: 커뮤니티 기반 오픈소스 스트리트 뷰</p>
                     </div>
                     <div id="mapillaryViewer" class="mapillary-viewer" style="display: none;"></div>
+                    <div id="street-view-content" style="width: 100%; height: 100%;"></div>
                     <div class="streetview-loading" id="streetViewLoading" style="display: none;">
                         <div class="loading-spinner"></div>
                         <p>Street View를 로드하는 중...</p>
@@ -496,6 +519,22 @@
 
     <!-- 토스트 컨테이너 -->
     <div id="toastContainer" class="toast-container"></div>
+
+    <!-- CCTV 뷰어 모달 -->
+    <div class="cctv-viewer-modal" id="cctvViewerModal" style="display: none;">
+        <div class="cctv-viewer-content">
+            <div class="cctv-viewer-header">
+                <h3 id="cctvTitle">CCTV 실시간 영상</h3>
+                <button class="cctv-viewer-close" id="cctvViewerClose">✖</button>
+            </div>
+            <div class="cctv-iframe-container">
+                <iframe id="cctvIframe" src="" frameborder="0" allowfullscreen></iframe>
+            </div>
+            <div class="cctv-viewer-footer">
+                <p>제공: 국가교통정보센터(ITS)</p>
+            </div>
+        </div>
+    </div>
 
     <!-- 이미지 뷰어 모달 (Body 직계 자식으로 이동) -->
     <div class="image-viewer-modal" id="imageViewerModal" style="display: none;">
