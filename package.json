@@ -18,7 +18,7 @@
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
     "express": "^4.19.2",
-    "ol": "^8.2.0",
+    "ol": "^10.8.0",
     "proj4": "^2.9.2"
   },
   "devDependencies": {

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: './',
+  base: '/WebGIS_BETA/',
   server: {
     port: 5173,
     open: true,
