@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌍 WebGIS - OpenLayers 지도 서비스</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌍</text></svg>">
+    <!-- 스타일 시트 직접 연결 (Vite 빌드 전에도 디자인 적용) -->
+    <!-- MapLibre GL JS for 3D 벡터 지도 -->
+    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet">
+    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+  <script type="module" crossorigin src="/WebGIS_BETA/assets/index-CV9D_O0E.js"></script>
+  <link rel="stylesheet" crossorigin href="/WebGIS_BETA/assets/index-BZoQ0pVi.css">
+</head>
+
+<body>
+    <!-- 로그인 오버레이 (비활성화됨) -->
+    <div id="loginOverlay" class="login-overlay" style="display: none;">
+        <div class="login-card">
+            <div class="login-header">
+                <span class="login-logo">🌍</span>
+                <h2>WebGIS Access</h2>
+                <p>본 시스템을 사용하려면 비밀번호가 필요합니다.</p>
+            </div>
+            <div class="login-body">
+                <div class="password-field">
+                    <input type="password" id="loginPassword" placeholder="비밀번호를 입력하세요" autocomplete="current-password">
+                    <button id="loginBtn" class="login-action-btn">접속하기</button>
+                </div>
+                <div id="loginError" class="login-error" style="display: none;">비밀번호가 올바르지 않습니다. 다시 시도해주세요.</div>
+            </div>
+            <div class="login-footer">
+                <p>© 2026 WebGIS Advanced System</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="mainContainer">
+        <!-- 헤더 -->
+        <header class="header">
+            <div class="header-content">
+                <!-- 왼쪽: 타이틀 & 네비게이션 -->
+                <div class="header-left">
+                    <h1>🌍 WebGIS</h1>
+                    <button id="navToolHeader" class="nav-tool-header-btn" title="경로 탐색">🚗 경로</button>
+                </div>
+
+                <!-- 중앙: 검색 -->
+                <div class="header-center">
+                    <div class="search-input-wrapper">
+                        <input type="text" id="searchInput" placeholder="도시나 나라를 검색하세요..." class="search-input">
+                        <button id="searchClearBtn" class="search-clear-btn" title="검색어 지우기">✖</button>
+                        <button id="searchBtn" class="search-btn">🔍</button>
+                    </div>
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+
+                <!-- 오른쪽: 유틸리티 버튼 -->
+                <div class="header-right">
+                    <button id="imageSearchBtn" class="header-icon-btn" title="위치 이미지 탐색">🖼️</button>
+                    <label for="imageUpload" class="header-icon-btn" title="사진에서 위치 찾기">📷</label>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                    <button id="enhanceQualityBtn" class="header-icon-btn" title="위성 화질 향상">✨</button>
+                    <button id="themeToggle" class="header-icon-btn" title="테마 전환">🌓</button>
+                    <button id="logoutBtn" class="header-icon-btn" title="지도 설정 초기화">🔄</button>
+                    <select id="layerSelect" class="layer-select-compact" aria-label="지도 레이어 선택">
+                        <option value="c_its">🚦 C-ITS 프리미엄 (전국 CCTV)</option>
+                        <option value="osm">표준 지도 (OSM)</option>
+                        <option value="satellite">HD 위성 (Esri)</option>
+                        <option value="walking_earth">Walking Earth</option>
+                        <option value="google_street_view">Google 거리뷰 (도로망)</option>
+                        <option value="hybrid">구글 하이브리드</option>
+                        <option value="terrain">구글 지형도</option>
+                        <option value="past_satellite">과거 위성 지도</option>
+                        <option value="streetview">거리뷰</option>
+                        <option value="3d">3D지도</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 과거 위성 연도 선택기 (레이어 선택에 따라 동적 표시) -->
+            <div id="yearSelectorContainer" class="year-selector-container" style="display: none;">
+                <div class="year-selector-label">📅 연도 선택: <span id="currentYearLabel">2024</span></div>
+                <div class="year-buttons">
+                    <button class="year-btn active" data-year="2024" data-id="13192">2024</button>
+                    <button class="year-btn" data-year="2023" data-id="12457">2023</button>
+                    <button class="year-btn" data-year="2022" data-id="17825">2022</button>
+                    <button class="year-btn" data-year="2021" data-id="51423">2021</button>
+                    <button class="year-btn" data-year="2020" data-id="23001">2020</button>
+                    <button class="year-btn" data-year="2019" data-id="11060">2019</button>
+                    <button class="year-btn" data-year="2018" data-id="14426">2018</button>
+                    <button class="year-btn" data-year="2017" data-id="14035">2017</button>
+                    <button class="year-btn" data-year="2016" data-id="6678">2016</button>
+                    <button class="year-btn" data-year="2015" data-id="8781">2015</button>
+                    <button class="year-btn" data-year="2014" data-id="14720">2014</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 메인 콘텐츠 -->
+        <main class="main-content">
+            <!-- 지도 컨테이너 -->
+            <div class="map-container">
+                <div id="map" class="map"></div>
+                <!-- 컨트롤 (지도 위 오버레이) -->
+                <div class="controls">
+                    <button id="zoomIn" class="control-btn">➕</button>
+                    <button id="zoomOut" class="control-btn">➖</button>
+                    <button id="fullExtent" class="control-btn">🏠</button>
+                    <button id="fullscreenToggle" class="control-btn" title="전체 화면">⛶</button>
+                    <button id="recenterBtn" class="control-btn" title="내 위치로">🎯</button>
+                </div>
+                <!-- 3D 지도 컨테이너 (MapLibre GL) -->
+                <div id="map3d" class="map-3d" style="display: none;"></div>
+                <div id="coordinates" class="coordinates">좌표: 37.5665, 126.9780 (서울)</div>
+                <!-- 멀티-스마트 거리 선택 패널 -->
+                <div id="routeChoice" class="route-choice" style="display:none;">
+                    <div class="route-choice-title">📏 선택: <span id="routeChoiceName"></span></div>
+                    <div class="route-choice-meta">검색 결과 경로 연결 • 합계는 마지막 구간 선택 시 표시</div>
+                    <div class="route-choice-actions">
+                        <button id="routeAddMid" class="inline-btn">➕ 중간 구간</button>
+                        <button id="routeAddLast" class="inline-btn">✅ 마지막 구간</button>
+                        <button id="routeCancelChoice" class="inline-btn">✖ 취소</button>
+                    </div>
+                    <div class="route-choice-hint">Tip: 선택 후 다른 장소를 계속 검색해 연결하세요.</div>
+                </div>
+            </div>
+
+            <!-- 사이드바 -->
+            <aside class="sidebar">
+                <!-- 모바일 리사이즈 핸들 -->
+                <div class="sidebar-resize-handle">
+                    <div class="resize-handle-bar"></div>
+                </div>
+                <!-- 정보 패널 -->
+                <details class="info-panel accordion-panel">
+                    <summary class="accordion-header">
+                        <h3>ℹ️ 정보</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <p>OpenLayers 기반 WebGIS입니다. 검색, 거리/면적 측정, 마커, 즐겨찾기, 테마를 제공합니다.</p>
+                        <ul class="info-list">
+                            <li>🔍 검색·즐겨찾기 및 키보드 탐색</li>
+                            <li>📏/📐 지오데식 계산·구간 배지·방위각 지원</li>
+                            <li>📍 마커 · 🗑️ 초기화 · 💾 데이터 내보내기</li>
+                            <li>🌓 라이트/다크 · ⛶ 전체 화면</li>
+                        </ul>
+                        <div class="info-badges">
+                            <span class="badge">Geocoding: Nominatim (OSM)</span>
+                            <span class="badge">Projection: EPSG:3857</span>
+                            <span class="badge">Coords: WGS84</span>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 사용 방법 패널 -->
+                <details class="help-panel accordion-panel">
+                    <summary class="accordion-header">
+                        <h3>📘 사용 방법</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <div class="help-section">
+                            <h4>🔍 검색</h4>
+                            <ul>
+                                <li>검색창에 도시/나라를 입력하고 Enter 또는 돋보기 버튼 클릭</li>
+                                <li>결과 항목 클릭: 해당 위치로 이동하며 스마트 거리 측정 시작점으로 설정</li>
+                                <li>결과 우측 버튼:
+                                    <ul>
+                                        <li>⭐ 즐겨찾기 추가</li>
+                                        <li>📏 스마트 거리 측정 시작</li>
+                                        <li>📐 스마트 면적 측정 시작</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>📏 거리 측정</h4>
+                            <ul>
+                                <li>좌측 패널의 "📏 거리 측정" 클릭 → 지도에서 점을 순서대로 클릭</li>
+                                <li>끝점 근처에 전체 거리 툴팁, 마지막 선분 중앙에 구간 거리 배지 표시</li>
+                                <li>Enter: 측정 완료, Esc: 측정 취소, Backspace: 마지막 점 되돌리기</li>
+                                <li>스마트 거리: 검색 결과 클릭 또는 📏 버튼으로 시작점 자동 설정 → 지도 클릭으로 지점 추가 → 더블클릭으로 완료</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>📐 면적 측정</h4>
+                            <ul>
+                                <li>좌측 패널의 "📐 면적 측정" 클릭 → 지도에서 다각형을 그려 면적 계산</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>📷 AI 이미지 위치 찾기</h4>
+                            <ul>
+                                <li>📷 버튼 클릭하여 사진 업로드</li>
+                                <li>GPS 정보가 있으면: 정확한 위치 표시</li>
+                                <li>GPS 정보가 없으면: AI가 이미지 분석
+                                    <ul>
+                                        <li>📝 OCR로 텍스트 추출 (간판, 표지판 등)</li>
+                                        <li>🏛️ 랜드마크 키워드 인식</li>
+                                        <li>🎨 이미지 시각적 특징 분석</li>
+                                        <li>🔍 추정된 위치 검색 및 표시</li>
+                                    </ul>
+                                </li>
+                                <li>💡 팁: 텍스트나 랜드마크가 있는 사진이 더 정확합니다</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>📍 마커/데이터</h4>
+                            <ul>
+                                <li>📍 마커 추가: 지도 클릭 위치에 임시 마커</li>
+                                <li>🗑️ 모두 지우기: 모든 측정/마커 초기화</li>
+                                <li>💾 데이터 내보내기: 측정 결과를 GeoJSON 유사 포맷으로 다운로드</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>🖥️ UI/환경</h4>
+                            <ul>
+                                <li>🌓 테마 토글: 라이트/다크 전환</li>
+                                <li>⛶ 전체 화면: 브라우저 전체 화면 토글</li>
+                                <li>레이어 선택: OSM/위성/지형도 전환</li>
+                            </ul>
+                        </div>
+                        <div class="help-section">
+                            <h4>⌨️ 단축키</h4>
+                            <table class="help-table">
+                                <tbody>
+                                    <tr>
+                                        <td>Enter</td>
+                                        <td>측정 완료</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Esc</td>
+                                        <td>측정 취소/닫기</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Backspace</td>
+                                        <td>마지막 점 되돌리기</td>
+                                    </tr>
+                                    <tr>
+                                        <td>↑/↓</td>
+                                        <td>검색 결과 이동</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <details class="help-section">
+                            <summary>문제 해결 팁</summary>
+                            <ul>
+                                <li>검색이 느릴 때: 네트워크 상태 확인, 다시 시도</li>
+                                <li>버튼이 보이지 않을 때: 브라우저 새로고침(F5) 또는 캐시 비우기</li>
+                                <li>지도가 느릴 때: 레이어를 OSM으로 전환</li>
+                            </ul>
+                        </details>
+                    </div>
+                </details>
+
+                <!-- 도구 패널 -->
+                <div class="tools-panel">
+                    <h3>🛠️ 도구</h3>
+                    <button id="navTool" class="tool-btn">🚗 경로 탐색</button>
+                    <button id="measureDistance" class="tool-btn">📏 거리 측정</button>
+                    <button id="measureArea" class="tool-btn">📐 면적 측정</button>
+                    <button id="addMarker" class="tool-btn">📍 마커 추가</button>
+                    <button id="clearAll" class="tool-btn">🗑️ 모두 지우기</button>
+                    <button id="exportData" class="tool-btn">💾 데이터 내보내기</button>
+                </div>
+
+                <!-- 네비게이션 패널 (새로 추가) -->
+                <div class="navigation-panel" id="navigationPanel" style="display: none;">
+                    <h3>🚗 경로 탐색</h3>
+                    <div class="nav-inputs">
+                        <div class="nav-input-group">
+                            <label>출발지</label>
+                            <div class="input-wrapper" style="position: relative;">
+                                <input type="text" id="startPoint" placeholder="장소 검색 또는 지도 클릭" autocomplete="off">
+                                <div class="nav-btn-group">
+                                    <button id="setStartBtn" class="icon-btn" title="지도에서 선택">📍</button>
+                                    <button id="useMyLocation" class="icon-btn" title="내 위치 사용">🎯</button>
+                                </div>
+                                <div id="startSuggestions" class="suggestions-list"></div>
+                            </div>
+                        </div>
+                        <div class="nav-input-group">
+                            <label>도착지</label>
+                            <div class="input-wrapper" style="position: relative;">
+                                <input type="text" id="endPoint" placeholder="장소 검색 또는 지도 클릭" autocomplete="off">
+                                <button id="setEndBtn" class="icon-btn" title="지도에서 선택">🏁</button>
+                                <div id="endSuggestions" class="suggestions-list"></div>
+                            </div>
+                        </div>
+                        <div class="nav-options">
+                            <label><input type="radio" name="transportMode" value="driving" checked> 🚗 운전</label>
+                            <label><input type="radio" name="transportMode" value="walking"> 🚶 도보</label>
+                            <label><input type="radio" name="transportMode" value="cycling"> 🚲 자전거</label>
+                        </div>
+                        <div class="nav-extra-options">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="trackLocation"> 📡 실시간 내 위치 추적
+                            </label>
+                        </div>
+                        <button id="findRouteBtn" class="action-btn primary-btn">길찾기</button>
+                        <button id="clearRouteBtn" class="action-btn secondary-btn">초기화</button>
+                    </div>
+                    <div id="routeResult" class="route-result" style="display: none;">
+                        <div class="result-header">추천 경로를 선택하세요</div>
+                        <div id="routeOptionsList" class="route-options-list"></div>
+                        <button id="startNavBtn" class="action-btn nav-start-btn"
+                            style="display: none; margin-top: 1.5rem; background: #00d2ff; background: linear-gradient(to right, #3a7bd5, #00d2ff);">🚩
+                            네비게이션 시작</button>
+                    </div>
+                </div>
+
+                <!-- 측정 설정 패널 -->
+                <details id="measureSettingsPanel" class="tools-panel accordion-panel" style="display: none;">
+                    <summary class="accordion-header">
+                        <h3>⚙️ 측정 설정</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <div class="measure-settings">
+                            <label class="setting-item"><input type="checkbox" id="optGeodesic" checked> 지오데식
+                                계산(타원체)</label>
+                            <label class="setting-item"><input type="checkbox" id="optSegments" checked> 구간 길이 배지
+                                표시</label>
+                            <label class="setting-item"><input type="checkbox" id="optBearing" checked> 마지막 구간 방위각
+                                표시</label>
+                            <div class="setting-actions">
+                                <button id="undoPoint" class="tool-btn">↩️ 마지막 점 취소</button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 즐겨찾기 패널 -->
+                <details id="favoritesPanel" class="favorites-panel accordion-panel" style="display: none;">
+                    <summary class="accordion-header">
+                        <h3>⭐ 즐겨찾기</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <div id="favoritesList" class="favorites-list"></div>
+                    </div>
+                </details>
+
+                <!-- 검색 결과 마커 패널 -->
+                <div class="search-results-panel">
+                    <h3>🔍 검색 결과 마커</h3>
+                    <div id="searchResultsList" class="search-results-list">
+                        <div class="empty">검색 결과를 선택하면 여기에 마커가 추가됩니다.</div>
+                    </div>
+                </div>
+
+                <!-- 측정 결과 패널 -->
+                <details id="measurementPanel" class="measurement-panel accordion-panel" style="display: none;">
+                    <summary class="accordion-header">
+                        <h3>📊 측정 결과</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <div id="measurementResult" class="measurement-result">
+                            측정 도구를 사용하여 결과를 확인하세요.
+                        </div>
+                        <div id="measureActions" class="measure-actions">
+                            <button id="finishMeasure" class="inline-btn" title="측정 완료(Enter)">✅ 완료</button>
+                            <button id="cancelMeasure" class="inline-btn" title="측정 취소(Esc)">✖ 취소</button>
+                            <button id="resetMeasure" class="inline-btn" title="처음 지점으로 초기화(R)">↺ 초기화</button>
+                        </div>
+                        <div class="measure-history-panel">
+                            <h3>🧭 측정 이력</h3>
+                            <div id="measureHistoryList" class="measure-history-list"></div>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 범례 패널 -->
+                <details id="legendPanel" class="legend-panel accordion-panel" style="display: none;">
+                    <summary class="accordion-header">
+                        <h3>🎨 범례</h3>
+                        <span class="accordion-icon">▼</span>
+                    </summary>
+                    <div class="accordion-content">
+                        <div class="legend-item">
+                            <div class="legend-color distance-color"></div>
+                            <span>거리 측정</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color area-color"></div>
+                            <span>면적 측정</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color marker-color"></div>
+                            <span>마커</span>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 이미지 탐색 패널 -->
+                <div class="tools-panel image-search-panel" id="imageSearchPanel" style="display: none;">
+                    <h3>🖼️ 위치 이미지 탐색</h3>
+                    <div class="image-search-container">
+                        <div class="image-search-info" id="imageSearchInfo">
+                            <p>지도를 클릭하거나 마커를 선택하여 해당 위치의 이미지를 탐색하세요.</p>
+                        </div>
+                        <div class="image-search-loading" id="imageSearchLoading" style="display: none;">
+                            <div class="loading-spinner"></div>
+                            <p>이미지를 검색하는 중...</p>
+                        </div>
+
+                        <!-- 뉴스 알림 (새로 추가) -->
+                        <div id="newsAlert" class="news-alert" style="display: none;">
+                            <div class="news-alert-content">
+                                <span class="news-alert-icon">📰</span>
+                                <span id="newsAlertText">위치 소식이 있습니다.</span>
+                            </div>
+                            <button id="newsAlertBtn" class="news-alert-btn">확인하기 ▼</button>
+                        </div>
+
+                        <div class="image-gallery" id="imageGallery" style="display: none;">
+                            <div class="image-gallery-header">
+                                <span class="gallery-title" id="galleryTitle">이미지 갤러리</span>
+                                <span class="gallery-count" id="galleryCount">0개</span>
+                            </div>
+                            <div class="image-grid" id="imageGrid"></div>
+                        </div>
+                        <div class="image-search-empty" id="imageSearchEmpty" style="display: none;">
+                            <p>이 위치에서 이미지를 찾을 수 없습니다.</p>
+                        </div>
+
+                        <!-- 위치 소식 섹션 -->
+                        <div class="location-news-section" id="locationNewsSection" style="display: none;">
+                            <div class="news-section-header">
+                                <h4>📰 위치 소식</h4>
+                                <span class="news-count" id="newsCount">0개</span>
+                            </div>
+                            <div class="news-loading" id="newsLoading" style="display: none;">
+                                <div class="loading-spinner"></div>
+                                <p>소식을 가져오는 중...</p>
+                            </div>
+                            <div class="news-list" id="newsList"></div>
+                            <div class="news-empty" id="newsEmpty" style="display: none;">
+                                <p>이 위치의 최근 소식을 찾을 수 없습니다.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 이미지 뷰어 모달 (이동됨) -->
+
+
+                <!-- Mapillary Street View 패널 -->
+                <div class="tools-panel streetview-panel" id="streetViewPanel" style="display: none;">
+                    <div class="streetview-header">
+                        <h3>🛣️ Street View</h3>
+                        <button id="closeStreetView" class="inline-btn close-streetview-btn">✖ 닫기</button>
+                    </div>
+                    <div class="streetview-info" id="streetViewInfo">
+                        <p>지도를 클릭하여 해당 위치의 Street View를 확인하세요.</p>
+                        <p class="streetview-note">🌍 완전 무료 오픈소스 Street View 서비스를 제공합니다.</p>
+                        <p class="streetview-note">💡 Mapillary: 커뮤니티 기반 오픈소스 스트리트 뷰</p>
+                    </div>
+                    <div id="mapillaryViewer" class="mapillary-viewer" style="display: none;"></div>
+                    <div id="street-view-content" style="width: 100%; height: 100%;"></div>
+                    <div class="streetview-loading" id="streetViewLoading" style="display: none;">
+                        <div class="loading-spinner"></div>
+                        <p>Street View를 로드하는 중...</p>
+                    </div>
+                    <div class="streetview-empty" id="streetViewEmpty" style="display: none;">
+                        <p>이 위치에서 Street View를 사용할 수 없습니다.</p>
+                    </div>
+                </div>
+
+                <!-- GeoSpy 스타일 AI 분석 패널 -->
+                <div class="tools-panel geospy-analysis-panel" id="geospyAnalysisPanel" style="display: none;">
+                    <h3>🤖 AI 위치 분석</h3>
+                    <div class="geospy-analysis-container">
+                        <div class="geospy-progress-section">
+                            <div class="geospy-progress-header">
+                                <span class="geospy-status-icon">🔍</span>
+                                <span class="geospy-status-text">이미지 분석 중...</span>
+                            </div>
+                            <div class="geospy-progress-bar">
+                                <div class="geospy-progress-fill" id="geospyProgressFill"></div>
+                            </div>
+                            <div class="geospy-analysis-steps" id="geospyAnalysisSteps">
+                                <div class="geospy-step" data-step="ocr">
+                                    <span class="step-icon">⏳</span>
+                                    <span class="step-text">텍스트 추출 (OCR)</span>
+                                </div>
+                                <div class="geospy-step" data-step="vision">
+                                    <span class="step-icon">⏳</span>
+                                    <span class="step-text">시각적 분석</span>
+                                </div>
+                                <div class="geospy-step" data-step="landmark">
+                                    <span class="step-icon">⏳</span>
+                                    <span class="step-text">랜드마크 인식</span>
+                                </div>
+                                <div class="geospy-step" data-step="search">
+                                    <span class="step-icon">⏳</span>
+                                    <span class="step-text">위치 검색</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="geospy-results-section" id="geospyResultsSection" style="display: none;">
+                            <div class="geospy-results-header">
+                                <span class="geospy-results-title">📍 분석 결과</span>
+                                <span class="geospy-results-count" id="geospyResultsCount">0개 위치 발견</span>
+                            </div>
+                            <div class="geospy-results-list" id="geospyResultsList"></div>
+                        </div>
+                    </div>
+                </div>
+
+            </aside>
+        </main>
+    </div>
+
+    <!-- 토스트 컨테이너 -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- CCTV 뷰어 모달 -->
+    <div class="cctv-viewer-modal" id="cctvViewerModal" style="display: none;">
+        <div class="cctv-viewer-content">
+            <div class="cctv-viewer-header">
+                <h3 id="cctvTitle">CCTV 실시간 영상</h3>
+                <button class="cctv-viewer-close" id="cctvViewerClose">✖</button>
+            </div>
+            <div class="cctv-iframe-container">
+                <iframe id="cctvIframe" src="" frameborder="0" allowfullscreen></iframe>
+            </div>
+            <div class="cctv-viewer-footer">
+                <p>제공: 국가교통정보센터(ITS)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 이미지 뷰어 모달 (Body 직계 자식으로 이동) -->
+    <div class="image-viewer-modal" id="imageViewerModal" style="display: none;">
+        <div class="image-viewer-content">
+            <button class="image-viewer-close" id="imageViewerClose">✖</button>
+            <img id="imageViewerImg" src="" alt="이미지">
+            <div class="image-viewer-info" id="imageViewerInfo"></div>
+            <!-- 뷰어 내 뉴스 섹션 -->
+            <div class="viewer-news-container" id="viewerNewsContainer" style="display: none;">
+                <div class="viewer-news-header">
+                    <h4>📰 관련 위치 소식</h4>
+                </div>
+                <div class="viewer-news-list" id="viewerNewsList"></div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
