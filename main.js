@@ -2189,6 +2189,33 @@ class WebGISMap {
         canvas.height = container.clientHeight;
 
         try {
+            // [CROSS-ORIGIN FIX] GitHub Pages에서 iframe은 다른 Origin(Vercel)이므로
+            // iframe.contentDocument 직접 접근이 차단됨.
+            // 해결책: 주입 스크립트가 video.src를 postMessage로 부모에게 전달하고,
+            //         부모는 로컬 <video> 요소를 만들어 AI 탐지에 활용함.
+            if (this._aiMessageListener) {
+                window.removeEventListener('message', this._aiMessageListener);
+            }
+            this._aiMessageListener = (event) => {
+                if (event.data?.type === 'cctv-video-ready' && event.data.src) {
+                    const src = event.data.src;
+                    if (!this._aiLocalVideo) {
+                        this._aiLocalVideo = document.createElement('video');
+                        this._aiLocalVideo.crossOrigin = 'anonymous';
+                        this._aiLocalVideo.setAttribute('playsinline', '');
+                        this._aiLocalVideo.muted = true;
+                        this._aiLocalVideo.style.cssText = 'position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;';
+                        document.body.appendChild(this._aiLocalVideo);
+                    }
+                    if (this._aiLocalVideo.src !== src) {
+                        this._aiLocalVideo.src = src;
+                        this._aiLocalVideo.play().catch(() => { });
+                        console.log('[AI] postMessage로 video URL 수신:', src);
+                    }
+                }
+            };
+            window.addEventListener('message', this._aiMessageListener);
+
             // 1. 모델 로드
             if (!this._cocoModel) {
                 this.toast('🎯 AI 딥러닝 모델 로딩 (15GB RAM 여유 감지)...');
@@ -2256,14 +2283,29 @@ class WebGISMap {
                     canvas.height = container.clientHeight;
                 }
 
-                // 2. 진짜 AI 시도 (프록시를 통해 Same-Origin 상태이므로 접근 가능)
+                // 2. AI 탐지 - 우선순위:
+                //    1) postMessage로 받은 로컬 video (_aiLocalVideo) - GitHub Pages 등 cross-origin 상황
+                //    2) iframe.contentDocument 직접 접근 - localhost/same-origin 상황
                 if (this._cocoModel) {
                     try {
                         let videoElement = null;
-                        if (iframe.contentDocument) {
-                            videoElement = iframe.contentDocument.querySelector('video') ||
-                                iframe.contentDocument.querySelector('img') ||
-                                iframe.contentDocument.querySelector('canvas');
+
+                        // 1순위: postMessage로 받아서 준비된 로컬 video 요소
+                        if (this._aiLocalVideo && this._aiLocalVideo.readyState >= 2) {
+                            videoElement = this._aiLocalVideo;
+                        }
+
+                        // 2순위: iframe 직접 접근 (same-origin 환경에서만 가능)
+                        if (!videoElement) {
+                            try {
+                                if (iframe.contentDocument) {
+                                    videoElement = iframe.contentDocument.querySelector('video') ||
+                                        iframe.contentDocument.querySelector('img') ||
+                                        iframe.contentDocument.querySelector('canvas');
+                                }
+                            } catch (secErr) {
+                                // cross-origin SecurityError - GitHub Pages 환경에서 정상
+                            }
                         }
 
                         if (videoElement && (videoElement.readyState >= 2 || videoElement.complete)) {

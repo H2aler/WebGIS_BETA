@@ -130,11 +130,43 @@ app.get('/api/cctv-proxy', async (req, res) => {
         };
 
         const inject = `<script>(function(){
+  // 1. CCTV 파라미터 주입
   var cp = ${JSON.stringify(cp)};
   Object.assign(window, cp);
   window.getQueryString = window.getParameterByName = function(n) {
     return cp[n] || cp[n.toLowerCase()] || '';
   };
+
+  // 2. [CROSS-ORIGIN AI FIX] video.src 동적 할당을 가로채서 부모 창에 relay
+  // GitHub Pages(다른 origin)에서 AI 탐지를 할 수 있도록 video URL을 postMessage로 전달
+  var proxyBase = location.origin; // Vercel URL (e.g., https://webgis-beta-alpha.vercel.app)
+  var _desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+  if (_desc && _desc.set) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      get: _desc.get,
+      set: function(val) {
+        _desc.set.call(this, val);
+        if (this.tagName === 'VIDEO' && val && val.length > 5) {
+          // 절대 URL로 변환하여 부모 창에 전달
+          var absUrl = (val.startsWith('http') || val.startsWith('//')) 
+            ? val 
+            : proxyBase + (val.startsWith('/') ? val : '/' + val);
+          try { window.parent.postMessage({ type: 'cctv-video-ready', src: absUrl }, '*'); } catch(e) {}
+        }
+      },
+      configurable: true
+    });
+  }
+
+  // 3. 기존 video 요소도 처리 (동적 할당 전에 이미 src가 있을 경우)
+  window.addEventListener('load', function() {
+    var videos = document.querySelectorAll('video');
+    videos.forEach(function(v) {
+      if (v.src) {
+        try { window.parent.postMessage({ type: 'cctv-video-ready', src: v.src }, '*'); } catch(e) {}
+      }
+    });
+  });
 })();</script>`;
 
         html = html.replace('<head>', '<head>' + inject)
