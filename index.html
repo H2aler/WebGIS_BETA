@@ -11,8 +11,12 @@
     <!-- MapLibre GL JS for 3D 벡터 지도 -->
     <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet">
     <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
-  <script type="module" crossorigin src="/WebGIS_BETA/assets/index-CV9D_O0E.js"></script>
-  <link rel="stylesheet" crossorigin href="/WebGIS_BETA/assets/index-BZoQ0pVi.css">
+
+    <!-- TensorFlow.js Core & COCO-SSD Model (for Real Object Detection) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <script type="module" crossorigin src="/WebGIS_BETA/assets/index-BVeZgSp1.js"></script>
+  <link rel="stylesheet" crossorigin href="/WebGIS_BETA/assets/index-D4ruw0Q4.css">
 </head>
 
 <body>
@@ -521,18 +525,110 @@
     <!-- 토스트 컨테이너 -->
     <div id="toastContainer" class="toast-container"></div>
 
-    <!-- CCTV 뷰어 모달 -->
+    <!-- CCTV 뷰어 모달 (프리미엄 대시보드 스타일) -->
     <div class="cctv-viewer-modal" id="cctvViewerModal" style="display: none;">
-        <div class="cctv-viewer-content">
+        <div class="cctv-viewer-content premium-glass">
             <div class="cctv-viewer-header">
-                <h3 id="cctvTitle">CCTV 실시간 영상</h3>
-                <button class="cctv-viewer-close" id="cctvViewerClose">✖</button>
+                <div class="cctv-header-left">
+                    <div class="cctv-status-badge">
+                        <span class="status-dot pulse"></span>
+                        LIVE
+                    </div>
+                    <h3 id="cctvTitle">CCTV 실시간 영상</h3>
+                </div>
+                <div class="cctv-header-right">
+                    <div class="cctv-enhance-controls">
+                        <button id="cctvZoomOut" class="cctv-tool-btn" title="디지털 축소">🔍-</button>
+                        <button id="cctvZoomIn" class="cctv-tool-btn" title="디지털 확대">🔍+</button>
+                        <button id="cctvFpsOpt" class="cctv-tool-btn active" title="하드웨어 가속 (FPS 보존)">🚀 FPS</button>
+                        <button id="cctvAntiGlare" class="cctv-tool-btn" title="야간/우천 헤드라이트 빛번짐 방지">🕶️ 빛번짐</button>
+                        <button id="cctvAiDetect" class="cctv-tool-btn" title="경량화 AI 객체 인식 (차량/보행자)">🎯 AI 탐지</button>
+                        <button id="cctvAutoEnhance" class="cctv-tool-btn" title="AI 자동 화질 향상">✨ 보정</button>
+                        <button id="cctvNightMode" class="cctv-tool-btn" title="야간 투시 모드">🌙 야간</button>
+                        <button id="cctvScreenshot" class="cctv-tool-btn" title="현장 스캔 (캡처)">📸 캡처</button>
+                        <button id="cctvMinimize" class="cctv-tool-btn" title="간편 접기">➖</button>
+                    </div>
+                    <button class="cctv-viewer-close" id="cctvViewerClose" title="닫기 (ESC)">✖</button>
+                </div>
             </div>
-            <div class="cctv-iframe-container">
-                <iframe id="cctvIframe" src="" frameborder="0" allowfullscreen></iframe>
+
+            <div class="cctv-main-layout">
+                <div class="cctv-iframe-container" id="cctvContainer">
+                    <div class="cctv-loading-overlay" id="cctvLoading">
+                        <div class="premium-spinner"></div>
+                        <p>고정밀 스트림을 연결 중입니다...</p>
+                    </div>
+                    <iframe id="cctvIframe" src="" frameborder="0" allowfullscreen></iframe>
+                    <!-- AI 탐지 캔버스 오버레이 -->
+                    <canvas id="cctvAiCanvas" class="cctv-ai-overlay"></canvas>
+                    <!-- 필터 레이어 -->
+                    <div class="cctv-filter-overlay"></div>
+                    <!-- 워터마크/오버레이 정보 -->
+                    <div class="cctv-overlay-info">
+                        <div id="cctvTimestamp" class="overlay-item">--:--:--</div>
+                        <div id="cctvLocationInfo" class="overlay-item">연결된 위치 정보 없음</div>
+                        <!-- AI 실시간 통계 오버레이 -->
+                        <div id="cctvAiStats" class="ai-stats-overlay" style="display: none;">
+                            <div class="stat-item v-flow">
+                                <span class="stat-icon">🚗</span>
+                                <span class="stat-label">차량:</span>
+                                <span id="countCar" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item p-flow">
+                                <span class="stat-icon">🚶</span>
+                                <span class="stat-label">보행자:</span>
+                                <span id="countPerson" class="stat-value">0</span>
+                            </div>
+                            <div class="stat-item b-flow">
+                                <span class="stat-icon">🚍</span>
+                                <span class="stat-label">대형:</span>
+                                <span id="countLarge" class="stat-value">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <aside class="cctv-sidebar">
+                    <div class="sidebar-section">
+                        <h4>📍 위치 정보</h4>
+                        <div id="cctvAddress" class="cctv-info-text">주소 정보를 로드 중입니다...</div>
+                        <div class="cctv-coords-mini">
+                            <span id="cctvLatLon">--.----, --.----</span>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h4>⚙️ 스트림 설정</h4>
+                        <div class="setting-row">
+                            <span>해상도</span>
+                            <span class="badge-blue">HD Auto</span>
+                        </div>
+                        <div class="setting-row">
+                            <span>대역폭</span>
+                            <span class="badge-green">High</span>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <h4>🔍 주변 시설</h4>
+                        <div id="cctvNearbyPoi" class="poi-list">
+                            <div class="poi-item-loading">주변 시설 탐색 중...</div>
+                        </div>
+                    </div>
+                    <div class="cctv-sidebar-footer">
+                        <button id="cctvShareBtn" class="cctv-action-btn">🔗 위치 공유</button>
+                        <button id="cctvExpandBtn" class="cctv-action-btn primary">🗺️ 지도 확장</button>
+                    </div>
+                </aside>
             </div>
+
             <div class="cctv-viewer-footer">
-                <p>제공: 국가교통정보센터(ITS)</p>
+                <div class="footer-left">
+                    <p>시스템 출처: 국가교통정보센터(ITS) • 실시간 데이터 스트리밍 프로토콜</p>
+                </div>
+                <div class="footer-right">
+                    <span id="cctvFps">FPS: 30</span>
+                    <span class="divider">|</span>
+                    <span id="cctvLatency">지연시간: 120ms</span>
+                </div>
             </div>
         </div>
     </div>
