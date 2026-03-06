@@ -1,11 +1,18 @@
 // Vercel Serverless Function - api/index.js
-// Based on 6-1_start_good technology
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const express = require('express');
 const app = express();
 
-// 🚀 UTIC 자원 자동 프록시 (JS, CSS, 이미지 등 모든 상대 경로 요청을 UTIC로 중계)
+// CORS 허용
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+});
+
+// 🚀 UTIC 자원 자동 프록시 (JS, CSS, 이미지 등 UTIC 자원을 중계)
 app.use(['/js', '/css', '/images', '/map', '/jsp', '/common', '/img', '/include'], async (req, res, next) => {
     if (req.originalUrl.startsWith('/api')) return next();
     const targetUrl = `https://www.utic.go.kr${req.originalUrl}`;
@@ -23,40 +30,25 @@ app.use(['/js', '/css', '/images', '/map', '/jsp', '/common', '/img', '/include'
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cache-Control', 'public, max-age=31536000');
         res.send(Buffer.from(buffer));
-    } catch (e) {
-        next();
-    }
+    } catch (e) { next(); }
 });
 
 // 공통 JSON fetch 헬퍼
 async function fetchJson(url, options = {}) {
     const resp = await fetch(url, options);
-    if (!resp.ok) throw new Error(`Request failed ${resp.status} for ${url}`);
+    if (!resp.ok) throw new Error(`Request failed ${resp.status}`);
     return resp.json();
 }
 
-// Nominatim으로 위치 이름 가져오기
-async function getLocationName(lat, lon) {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=0`;
-    try {
-        const data = await fetchJson(url, { headers: { 'User-Agent': 'WebGIS-StreetView-Server/1.0' } });
-        return data.display_name || '';
-    } catch (e) { return ''; }
-}
+// ── API Routes ──────────────────────────────────────────────────
 
-function extractLocationKeywords(locationName) {
-    if (!locationName) return [];
-    return locationName.split(',').map(p => p.trim()).filter(Boolean).slice(0, 2);
-}
-
-// API Routes
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.get('/api/street-images', async (req, res) => {
     const lat = parseFloat(req.query.lat);
     const lon = parseFloat(req.query.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: 'Invalid coordinates' });
-    // (Simplified for performance, keeping core logic)
+    if (!Number.isFinite(lat) || !Number.isFinite(lon))
+        return res.status(400).json({ error: 'Invalid coordinates' });
     try {
         const searchUrl = `https://commons.wikimedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=5000&gslimit=10&format=json`;
         const searchData = await fetchJson(searchUrl);
@@ -87,6 +79,7 @@ app.get('/api/google-tile/:server/:layer/:z/:x/:y', async (req, res) => {
     } catch (e) { res.status(500).send('Error'); }
 });
 
+// 🚀 CCTV 전용 프록시 (SyntaxError 완전 방지 버전)
 app.get('/api/cctv-proxy', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('URL required');
@@ -98,19 +91,32 @@ app.get('/api/cctv-proxy', async (req, res) => {
             }
         });
         let html = await response.text();
-        html = html.replace(/src=(['"])(https?:\/\/[^'"]+utic\.go\.kr\/[^'"]+)(['"])/gi, `src=$1/api/proxy?url=$2$3`);
-        html = html.replace(/src=(['"])(['"])\s*\+\s*([^+'"]+)\s*\+\s*\2\s*\1/g, "src=$1$2/api/proxy?url=$2 + encodeURIComponent($3) + $2$1");
 
-        // Injection: JSON.stringify()를 사용하여 한글/특수문자로 인한 SyntaxError 완전 방지
+        // ─ [핵심 수정] ─
+        // <script> 블록을 먼저 추출하여 플레이스홀더로 교체 → src 교체 적용 → 복원
+        // 이렇게 하면 JS 코드 내부의 문자열에는 절대 손대지 않아 SyntaxError 방지
+        const scriptBlocks = [];
+        html = html.replace(/<script[\s\S]*?<\/script>/gi, (match) => {
+            scriptBlocks.push(match);
+            return `<!--SCRIPT_BLOCK_${scriptBlocks.length - 1}-->`;
+        });
+
+        // HTML 속성 내 src만 교체 (JS 코드가 없으므로 안전)
+        html = html.replace(/src=(['"])(https?:\/\/[^'"]*utic\.go\.kr[^'"]+)(['"])/gi,
+            `src=$1/api/proxy?url=$2$3`);
+
+        // 스크립트 블록 복원
+        html = html.replace(/<!--SCRIPT_BLOCK_(\d+)-->/g,
+            (_, i) => scriptBlocks[parseInt(i)]);
+
+        // ─ 파라미터 주입 (JSON.stringify로 한글/특수문자 완전 이스케이프) ─
         const urlObj = new URL(targetUrl);
         const p = Object.fromEntries(urlObj.searchParams.entries());
 
-        // cctvname은 이중 인코딩되어 있을 수 있으므로 안전하게 처리
         let cctvname = p.cctvname || '';
         try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
         try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
 
-        // JSON.stringify()는 항상 유효한 JS 문자열을 생성함 (따옴표 포함)
         const cp = {
             cctvid: p.cctvid || '',
             cctvId: p.cctvid || '',
@@ -131,21 +137,27 @@ app.get('/api/cctv-proxy', async (req, res) => {
   };
 })();</script>`;
 
-        html = html.replace('<head>', '<head>' + inject).replace(/<video/gi, '<video crossorigin="anonymous"');
+        html = html.replace('<head>', '<head>' + inject)
+            .replace(/<video/gi, '<video crossorigin="anonymous"');
+
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(html);
-    } catch (e) { res.status(500).send('Error: ' + e.message); }
+    } catch (e) {
+        res.status(500).send('CCTV Proxy Error: ' + e.message);
+    }
 });
 
+// 🔗 범용 리소스 프록시
 app.get('/api/proxy', async (req, res) => {
     const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send('URL required');
     try {
         const response = await fetch(targetUrl);
         const buffer = await response.arrayBuffer();
-        res.setHeader('Content-Type', response.headers.get('content-type'));
+        res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.send(Buffer.from(buffer));
-    } catch (e) { res.status(500).send('Error'); }
+    } catch (e) { res.status(500).send('Proxy Error: ' + e.message); }
 });
 
 module.exports = app;
