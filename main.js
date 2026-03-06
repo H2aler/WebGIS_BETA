@@ -30,7 +30,15 @@ function getProxyUrl() {
         return isDev ? 'http://localhost:3000' : window.location.origin;
     }
 
-    // 웹 환경에서는 상대경로(/api)로 접근하여 Same-Origin 정책 유지
+    // 웹 환경에서의 처리
+    // GitHub Pages(h2aler.github.io)는 서버 기능이 없으므로, Vercel로 배포된 백엔드 서버로 터널링
+    if (window.location.hostname.includes('github.io')) {
+        // GitHub의 차단을 무시하고 뚫기 위한 Vercel 우회로 (본인이 배포할 Vercel 주소)
+        // 이 주소는 Vercel에서 'webgis-beta-alpha'라는 이름으로 프로젝트를 생성했을 때의 예시입니다.
+        return 'https://webgis-beta-alpha.vercel.app';
+    }
+
+    // 로컬 환경 또는 Vercel 환경에서는 자기 자신의 상대경로(/api) 사용
     return '';
 }
 
