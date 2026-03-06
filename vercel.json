@@ -1,0 +1,41 @@
+{
+    "version": 2,
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/js/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/css/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/images/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/map/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/jsp/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/common/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/img/(.*)",
+            "destination": "/api/index.js"
+        },
+        {
+            "source": "/include/(.*)",
+            "destination": "/api/index.js"
+        }
+    ]
+}

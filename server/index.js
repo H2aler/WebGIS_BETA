@@ -1,10 +1,46 @@
-// 간단한 백엔드 서버 (Express)
 // 역할: 프론트엔드 대신 Wikimedia API를 호출해 CORS 없이 거리/위치 이미지를 제공
+
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const express = require('express');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
+
+// 🚀 UTIC 자원 자동 프록시 (JS, CSS, 이미지 등 모든 상대 경로 요청을 UTIC로 중계)
+// 이 미들웨어는 모든 라우트보다 위에 있어야 404를 방지할 수 있습니다.
+app.use(['/js', '/css', '/images', '/map', '/jsp', '/common', '/img', '/include'], async (req, res, next) => {
+  // API 경로는 프록시 대상에서 제외
+  if (req.originalUrl.startsWith('/api')) return next();
+
+  const targetUrl = `https://www.utic.go.kr${req.originalUrl}`;
+
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.utic.go.kr/main/main.do'
+      }
+    });
+
+    if (!response.ok) {
+      // 파일을 못 찾거나 에러면 다음 미들웨어(또는 404 처리)로 넘김
+      return next();
+    }
+
+    const contentType = response.headers.get('content-type');
+    const buffer = await response.arrayBuffer();
+
+    // 브라우저가 파일 타입을 정확히 인식하도록 헤더 설정
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 자원은 오래 캐싱
+    res.send(Buffer.from(buffer));
+  } catch (e) {
+    // 네트워크 에러 등 발생 시 넘김
+    next();
+  }
+});
 
 // 공통 JSON fetch 헬퍼
 async function fetchJson(url, options = {}) {
@@ -309,7 +345,7 @@ app.get('/api/google-tile/:server/:layer/:z/:x/:y', async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
-    
+
     if (!response.ok) {
       console.error(`[Google Tile Proxy] Failed (${response.status}): ${url}`);
       return res.status(response.status).send('Tile fetch failed');
@@ -334,7 +370,7 @@ app.get('/api/terrain-tile/:z/:x/:y', async (req, res) => {
 
   try {
     const response = await fetch(url);
-    
+
     if (!response.ok) {
       console.error(`[Terrain Tile Proxy] Failed (${response.status}): ${url}`);
       return res.status(response.status).send('Tile fetch failed');
@@ -348,6 +384,135 @@ app.get('/api/terrain-tile/:z/:x/:y', async (req, res) => {
     res.send(Buffer.from(buffer));
   } catch (error) {
     console.error('[terrain-tile-proxy] 오류:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// 🚀 CCTV 전용 HTML/JSP 프록시 (Same-Origin 우회용)
+app.get('/api/cctv-proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).send('URL이 필요합니다.');
+
+  console.log(`[CCTV Proxy] Fetching HTML: ${targetUrl}`);
+
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.utic.go.kr/main/main.do'
+      }
+    });
+
+    if (!response.ok) return res.status(response.status).send('CCTV fetch failed');
+
+    let html = await response.text();
+    const uticBase = 'https://www.utic.go.kr';
+
+    // 1. 헤드 최상단에 <base> 태그를 절대경로로 삽입하지 않음 (프록시 유지를 위해)
+    // 대신 상대 경로가 우리 서버를 타도록 둠.
+
+    // 3. 자바스크립트 내의 비디오 소스(src)를 우리 프록시를 타도록 강제 치환
+    // UTIC 스트림은 보통 var b = '<video ... src="' + d + '" ...' 형태이거나 직접 src를 할당함.
+    // 이를 /api/proxy?url=... 형태로 변환하여 브라우저가 직접 UTIC에 붙지 않게 함 (CORS/Tainted Canvas 방지)
+
+    // 비디오 태그의 src 속성을 찾아서 우리 프록시로 감싸기
+    // 1) HTML 태그 내의 src (예: <video src="http://...">)
+    html = html.replace(/src=(['"])(https?:\/\/www\.utic\.go\.kr\/[^'"]+)(['"])/gi, `src=$1/api/proxy?url=$2$3`);
+    html = html.replace(/src=(['"])(https?:\/\/cctv\.utic\.go\.kr\/[^'"]+)(['"])/gi, `src=$1/api/proxy?url=$2$3`);
+
+    // 2) 자바스크립트 문자열 내의 src (예: ' src="' + d + '"' 또는 " src='" + d + "'")
+    // UTIC 패턴: src="' + d + '" -> src="/api/proxy?url=' + encodeURIComponent(d) + '"
+    // $1(HTML 따옴표), $2(JS 따옴표)를 구분하여 정확히 치환
+    html = html.replace(/src=(['"])(['"])\s*\+\s*([^+'"]+)\s*\+\s*\2\s*\1/g, "src=$1$2/api/proxy?url=$2 + encodeURIComponent($3) + $2$1");
+
+    // 3) 단순 변수 할당 (예: mov.src = d)
+    // 이 경우는 UTIC 스크립트에서 드물지만 안전을 위해 추가할 수 있음 (일단 보류)
+
+    // 4. 자바스크립트 AJAX 호출 가로채기 및 파라미터 복원 주입
+    const urlObj = new URL(targetUrl);
+    const params = Object.fromEntries(urlObj.searchParams.entries());
+
+    const injectionScript = `
+    <script>
+      (function() {
+        // 1. URL 파라미터 추출 및 정규화
+        // UTIC 스크립트마다 요구하는 필드명이 다를 수 있으므로(cctvid, cctvId, id, uid 등) 모두 주입
+        var cctvParams = {
+          cctvid: "${params.cctvid || ''}",
+          cctvId: "${params.cctvid || params.cctvId || ''}",
+          cctvID: "${params.cctvid || params.cctvId || ''}",
+          cctvname: "${decodeURIComponent(params.cctvname || '')}",
+          cctvName: "${decodeURIComponent(params.cctvname || '')}",
+          kind: "${params.kind || ''}",
+          cctvip: "${params.cctvip || ''}",
+          cctvch: "${params.cctvch || ''}",
+          cctvCh: "${params.cctvch || ''}",
+          id: "${params.id || params.uid || ''}",
+          uid: "${params.id || params.uid || ''}",
+          cctvpasswd: "${params.cctvpasswd || 'undefined'}",
+          cctvport: "${params.cctvport || 'undefined'}"
+        };
+
+        // 2. 전역 변수로 할당 (UTIC 스크립트 직접 참조 대응)
+        Object.assign(window, cctvParams);
+        
+        // 3. 파라미터 획득 함수 심(Shim) 주입
+        window.getQueryString = window.getParameterByName = function(name) {
+          if (!name) return "";
+          var lowName = name.toLowerCase();
+          // 정확한 매칭 -> 소문자 매칭 -> params 객체 매칭 시도
+          return cctvParams[name] || cctvParams[lowName] || "";
+        };
+
+        // 4. XMLHttpRequest 가로채기 (상대경로 유치 및 절대경로 차단)
+        var originOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
+          if (typeof url === 'string') {
+            // UTIC 절대경로로 요청하려 하면 우리 프록시를 타도록 상대경로로 변환
+            if (url.startsWith('https://www.utic.go.kr') || url.startsWith('http://www.utic.go.kr')) {
+              url = url.replace(/https?:\/\/www.utic.go.kr/, '');
+            }
+            // 상대경로(/map...)는 그대로 두면 우리 서버(localhost:3001)로 요청됨 -> proxy 미들웨어가 처리
+          }
+          return originOpen.apply(this, arguments);
+        };
+        
+        console.log("[CCTV Proxy Shim] Global variables and AJAX interceptor injected", cctvParams);
+      })();
+    </script>
+    `;
+    html = html.replace('<head>', '<head>' + injectionScript);
+
+    // 4. 비디오 태그에 AI 분석용 crossorigin 속성 부여
+    html = html.replace(/<video/gi, '<video crossorigin="anonymous"');
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+
+  } catch (error) {
+    console.error('[cctv-proxy] 오류:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// 🔗 범용 리소스 프록시 (이미지, 비디오 픽셀 데이터 CORS 우회용)
+app.get('/api/proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).send('URL이 필요합니다.');
+
+  try {
+    const response = await fetch(targetUrl);
+    if (!response.ok) return res.status(response.status).send('Proxy failed');
+
+    const contentType = response.headers.get('content-type');
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*'); // CORS 완전 허용
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('[general-proxy] 오류:', error);
     res.status(500).send('Internal Server Error');
   }
 });
