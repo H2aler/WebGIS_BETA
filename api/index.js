@@ -98,17 +98,43 @@ app.get('/api/cctv-proxy', async (req, res) => {
             }
         });
         let html = await response.text();
-        // 6-1_start_good의 개선된 리플레이스먼트 적용
         html = html.replace(/src=(['"])(https?:\/\/[^'"]+utic\.go\.kr\/[^'"]+)(['"])/gi, `src=$1/api/proxy?url=$2$3`);
         html = html.replace(/src=(['"])(['"])\s*\+\s*([^+'"]+)\s*\+\s*\2\s*\1/g, "src=$1$2/api/proxy?url=$2 + encodeURIComponent($3) + $2$1");
-        // Injection
+
+        // Injection: JSON.stringify()를 사용하여 한글/특수문자로 인한 SyntaxError 완전 방지
         const urlObj = new URL(targetUrl);
         const p = Object.fromEntries(urlObj.searchParams.entries());
-        const inject = `<script>(function(){ var cp={cctvid:"${p.cctvid || ''}",cctvId:"${p.cctvid || ''}",cctvname:"${decodeURIComponent(p.cctvname || '')}",kind:"${p.kind || ''}",cctvip:"${p.cctvip || ''}",cctvch:"${p.cctvch || ''}",id:"${p.id || p.uid || ''}"}; Object.assign(window,cp); window.getQueryString=window.getParameterByName=function(n){ return cp[n]||cp[n.toLowerCase()]||""; }; })();</script>`;
+
+        // cctvname은 이중 인코딩되어 있을 수 있으므로 안전하게 처리
+        let cctvname = p.cctvname || '';
+        try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
+        try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
+
+        // JSON.stringify()는 항상 유효한 JS 문자열을 생성함 (따옴표 포함)
+        const cp = {
+            cctvid: p.cctvid || '',
+            cctvId: p.cctvid || '',
+            cctvname: cctvname,
+            kind: p.kind || '',
+            cctvip: p.cctvip || '',
+            cctvch: p.cctvch || '',
+            cctvCh: p.cctvch || '',
+            id: p.id || p.uid || '',
+            uid: p.id || p.uid || ''
+        };
+
+        const inject = `<script>(function(){
+  var cp = ${JSON.stringify(cp)};
+  Object.assign(window, cp);
+  window.getQueryString = window.getParameterByName = function(n) {
+    return cp[n] || cp[n.toLowerCase()] || '';
+  };
+})();</script>`;
+
         html = html.replace('<head>', '<head>' + inject).replace(/<video/gi, '<video crossorigin="anonymous"');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(html);
-    } catch (e) { res.status(500).send('Error'); }
+    } catch (e) { res.status(500).send('Error: ' + e.message); }
 });
 
 app.get('/api/proxy', async (req, res) => {

@@ -432,52 +432,54 @@ app.get('/api/cctv-proxy', async (req, res) => {
     const urlObj = new URL(targetUrl);
     const params = Object.fromEntries(urlObj.searchParams.entries());
 
+    // cctvname은 이중 URL 인코딩될 수 있으므로 안전하게 두 번 디코딩
+    let cctvname = params.cctvname || '';
+    try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
+    try { cctvname = decodeURIComponent(cctvname); } catch (e) { }
+
+    // JSON.stringify()를 사용하여 한글/따옴표/특수문자로 인한 SyntaxError 완전 방지
+    const cctvParamsObj = {
+      cctvid: params.cctvid || '',
+      cctvId: params.cctvid || params.cctvId || '',
+      cctvID: params.cctvid || params.cctvId || '',
+      cctvname: cctvname,
+      cctvName: cctvname,
+      kind: params.kind || '',
+      cctvip: params.cctvip || '',
+      cctvch: params.cctvch || '',
+      cctvCh: params.cctvch || '',
+      id: params.id || params.uid || '',
+      uid: params.id || params.uid || '',
+      cctvpasswd: params.cctvpasswd || 'undefined',
+      cctvport: params.cctvport || 'undefined'
+    };
+
     const injectionScript = `
     <script>
       (function() {
-        // 1. URL 파라미터 추출 및 정규화
-        // UTIC 스크립트마다 요구하는 필드명이 다를 수 있으므로(cctvid, cctvId, id, uid 등) 모두 주입
-        var cctvParams = {
-          cctvid: "${params.cctvid || ''}",
-          cctvId: "${params.cctvid || params.cctvId || ''}",
-          cctvID: "${params.cctvid || params.cctvId || ''}",
-          cctvname: "${decodeURIComponent(params.cctvname || '')}",
-          cctvName: "${decodeURIComponent(params.cctvname || '')}",
-          kind: "${params.kind || ''}",
-          cctvip: "${params.cctvip || ''}",
-          cctvch: "${params.cctvch || ''}",
-          cctvCh: "${params.cctvch || ''}",
-          id: "${params.id || params.uid || ''}",
-          uid: "${params.id || params.uid || ''}",
-          cctvpasswd: "${params.cctvpasswd || 'undefined'}",
-          cctvport: "${params.cctvport || 'undefined'}"
-        };
+        var cctvParams = ${JSON.stringify(cctvParamsObj)};
 
-        // 2. 전역 변수로 할당 (UTIC 스크립트 직접 참조 대응)
+        // 전역 변수로 할당 (UTIC 스크립트 직접 참조 대응)
         Object.assign(window, cctvParams);
         
-        // 3. 파라미터 획득 함수 심(Shim) 주입
+        // 파라미터 획득 함수 심(Shim) 주입
         window.getQueryString = window.getParameterByName = function(name) {
           if (!name) return "";
-          var lowName = name.toLowerCase();
-          // 정확한 매칭 -> 소문자 매칭 -> params 객체 매칭 시도
-          return cctvParams[name] || cctvParams[lowName] || "";
+          return cctvParams[name] || cctvParams[name.toLowerCase()] || "";
         };
 
-        // 4. XMLHttpRequest 가로채기 (상대경로 유치 및 절대경로 차단)
+        // XMLHttpRequest 가로채기 (UTIC 절대경로 -> 상대경로 변환)
         var originOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url) {
           if (typeof url === 'string') {
-            // UTIC 절대경로로 요청하려 하면 우리 프록시를 타도록 상대경로로 변환
             if (url.startsWith('https://www.utic.go.kr') || url.startsWith('http://www.utic.go.kr')) {
               url = url.replace(/https?:\/\/www.utic.go.kr/, '');
             }
-            // 상대경로(/map...)는 그대로 두면 우리 서버(localhost:3001)로 요청됨 -> proxy 미들웨어가 처리
           }
           return originOpen.apply(this, arguments);
         };
         
-        console.log("[CCTV Proxy Shim] Global variables and AJAX interceptor injected", cctvParams);
+        console.log("[CCTV Proxy Shim] Injected params:", cctvParams);
       })();
     </script>
     `;
